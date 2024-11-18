@@ -102,10 +102,10 @@ Format response http://<ip>:<port>/cek:
 
 ### 3. Register ke Bot Admin
 
-Chat ke nomor: 081932266177
+Chat ke nomor: 081932266177 atau ke bot tele @CrxaHmndBot
 
 ```
-1. Kirim: #register
+1. Kirim: #register (untuk wa)  atau /register (untuk tele)
 2. Masukkan IP server
 3. Masukkan port (dari logs)
 4. Masukkan nama server
