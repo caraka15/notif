@@ -8,7 +8,7 @@ const axios = require('axios');
 const ROOT_DIR = '/root/notif';
 const CONFIG_DIR = path.join(ROOT_DIR, 'config');
 const ALLOWLIST_PATH = path.join(CONFIG_DIR, 'allowlist-tele.json');
-const BOT_TOKEN = '7399467812:AAHlPKkishpucm7dLAERMIKyjddp5A2ze2Q';
+const BOT_TOKEN = 'YOUR_MONITOR_BOT_TOKEN';
 
 // State untuk registrasi
 const registrationState = new Map();

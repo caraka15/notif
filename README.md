@@ -7,7 +7,7 @@ Sistem untuk monitoring node Humanode dengan fitur web API dan notifikasi WhatsA
 1. [Cara Kerja Sistem](#cara-kerja-sistem)
 2. [Instalasi](#instalasi)
 3. [Setup Web API](#setup-web-api)
-4. [Setup admin Bot](#setup-whatsapp-bot)
+4. [Setup admin Bot](#setup-admin-bot)
 5. [Command Service](#command-service)
 6. [API Documentation](#api-documentation)
 7. [Monitoring & Notifikasi](#monitoring--notifikasi)
@@ -113,6 +113,10 @@ Chat ke nomor: 081932266177
 6. Konfirmasi dengan 'ya'
 ```
 
+## SETUP WEB API
+
+Jika anda ingin menjalankan monitoring dan admin bot sendiri anda bisa ke sini untuk setup nya [Setup Web API](https://github.com/caraka15/notif/blob/main/BOT_ADMIN.md)
+
 ## Struktur Directory
 
 ```
@@ -180,6 +184,28 @@ Chat ke nomor: 081932266177
 ./start-admin.sh status
 ```
 
+### Server Admin (Telegram Bot)
+
+```bash
+# Start Service
+./start-tele-admin.sh start         # Start semua
+./start-tele-admin.sh start wa      # Start bot saja
+./start-tele-admin.sh start monitor # Start monitor saja
+
+# Stop Service
+./start-tele-admin.sh stop          # Stop semua
+./start-tele-admin.sh stop wa       # Stop bot saja
+./start-tele-admin.sh stop monitor  # Stop monitor saja
+
+# Restart Service
+./start-tele-admin.sh restart         # Restart semua
+./start-tele-admin.sh restart wa      # Restart bot saja
+./start-tele-admin.sh restart monitor # Restart monitor saja
+
+# Status
+./start-tele-admin.sh status
+```
+
 ## Command WhatsApp Bot
 
 ```
@@ -188,6 +214,16 @@ Chat ke nomor: 081932266177
 #link     - Dapatkan link autentikasi
 #web      - Tampilkan link dashboard
 #bantuan  - Tampilkan daftar perintah
+```
+
+## Command Telegram Bot
+
+```
+/register - Daftar node baru
+/cek      - Cek status bioauth
+/link     - Dapatkan link autentikasi
+/web      - Tampilkan link dashboard
+/bantuan  - Tampilkan daftar perintah
 ```
 
 ## Monitoring & Notifikasi
@@ -203,7 +239,7 @@ Bot akan mengirim notifikasi untuk:
 
 ## Troubleshooting
 
-### 1. Web API Error
+### Web API Error
 
 Cek error di logs:
 
@@ -223,46 +259,17 @@ Solusi umum:
 ./start-user.sh restart
 ```
 
-### 2. WhatsApp Bot Error
-
-Cek error di logs:
-
-```bash
-tail -f /root/logs/wa.log      # WhatsApp bot
-tail -f /root/logs/monitor.log # Monitoring
-```
-
-Solusi umum:
-
-```bash
-# Restart specific service
-./start-admin.sh restart wa
-./start-admin.sh restart monitor
-
-# Restart all
-./start-admin.sh restart
-```
-
-### 3. QR Code Issues
-
-- Clear terminal: `clear`
-- Tunggu 20-30 detik untuk QR baru
-- Restart service jika masih error
-- Pastikan folder .wwebjs*auth*\* ada dan writable
-
 ### 4. Connection Issues
 
 ```bash
 # Cek status service
 ./start-user.sh status
-./start-admin.sh status
 
 # Cek logs real-time
 tail -f /root/logs/*.log
 
 # Restart jika perlu
 ./start-user.sh restart
-./start-admin.sh restart
 ```
 
 ### 5. Permission Issues
