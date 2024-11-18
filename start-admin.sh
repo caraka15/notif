@@ -38,16 +38,16 @@ start_wa_bot() {
     fi
 }
 
-# Fungsi untuk memulai bioauth checker
-start_bioauth() {
-    log_message "Memulai Bioauth Checker..."
-    nohup node bioauth.js > "$LOG_DIR/bioauth.log" 2>&1 &
+# Fungsi untuk memulai monitor checker
+start_monitor() {
+    log_message "Memulai monitor Checker..."
+    nohup node monitor.js > "$LOG_DIR/monitor.log" 2>&1 &
     sleep 3
     
-    if is_process_running "bioauth.js"; then
-        log_message "Bioauth Checker berhasil dijalankan"
+    if is_process_running "monitor.js"; then
+        log_message "monitor berhasil dijalankan"
     else
-        log_message "GAGAL menjalankan Bioauth Checker"
+        log_message "GAGAL menjalankan monitor"
         return 1
     fi
 }
@@ -64,10 +64,10 @@ check_services() {
         echo "WhatsApp Bot: Stopped"
     fi
     
-    if is_process_running "bioauth.js"; then
-        echo "Bioauth Checker: Running"
+    if is_process_running "monitor.js"; then
+        echo "monitor: Running"
     else
-        echo "Bioauth Checker: Stopped"
+        echo "monitor: Stopped"
     fi
 }
 
@@ -75,7 +75,7 @@ check_services() {
 stop_all() {
     log_message "Menghentikan semua layanan..."
     stop_if_running "wa.js"
-    stop_if_running "bioauth.js"
+    stop_if_running "monitor.js"
     log_message "Semua layanan dihentikan"
 }
 
@@ -87,7 +87,7 @@ case "$1" in
             stop_all
             start_wa_bot
             sleep 2
-            start_bioauth
+            start_monitor
         else
             shift
             log_message "Memulai service: $@"
@@ -96,13 +96,13 @@ case "$1" in
                     wa)
                         start_wa_bot
                         ;;
-                    bioauth)
-                        start_bioauth
+                    monitor)
+                        start_monitor
                         ;;
 
                     *)
                         echo "Service tidak dikenal: $service"
-                        echo "Gunakan: wa|bioauth"
+                        echo "Gunakan: wa|monitor"
                         ;;
                 esac
                 sleep 2
@@ -124,12 +124,12 @@ case "$1" in
                     wa)
                         stop_if_running "wa.js"
                         ;;
-                    bioauth)
-                        stop_if_running "bioauth.js"
+                    monitor)
+                        stop_if_running "monitor.js"
                         ;;
                     *)
                         echo "Service tidak dikenal: $service"
-                        echo "Gunakan: wa|bioauth"
+                        echo "Gunakan: wa|monitor"
                         ;;
                 esac
             done
@@ -147,14 +147,14 @@ case "$1" in
             log_message "Melakukan restart service: $@"
             for service in $@; do
                 case "$service" in
-                    wa|bioauth)
+                    wa|monitor)
                         $0 stop $service
                         sleep 2
                         $0 start $service
                         ;;
                     *)
                         echo "Service tidak dikenal: $service"
-                        echo "Gunakan: wa|bioauth"
+                        echo "Gunakan: wa|monitor"
                         ;;
                 esac
             done
@@ -175,7 +175,7 @@ case "$1" in
         echo "  restart [service...] - Restart semua atau service tertentu"
         echo "  status              - Cek status semua service"
         echo ""
-        echo "Services: wa|bioauth"
+        echo "Services: wa|monitor"
         exit 1
         ;;
 esac
