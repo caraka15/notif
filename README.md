@@ -7,7 +7,7 @@ Sistem untuk monitoring node Humanode dengan fitur web API dan notifikasi WhatsA
 1. [Cara Kerja Sistem](#cara-kerja-sistem)
 2. [Instalasi](#instalasi)
 3. [Setup Web API](#setup-web-api)
-4. [Setup WhatsApp Bot](#setup-whatsapp-bot)
+4. [Setup admin Bot](#setup-whatsapp-bot)
 5. [Command Service](#command-service)
 6. [API Documentation](#api-documentation)
 7. [Monitoring & Notifikasi](#monitoring--notifikasi)
@@ -27,17 +27,6 @@ Sistem untuk monitoring node Humanode dengan fitur web API dan notifikasi WhatsA
   GET /auth - Link autentikasi
   GET /     - Web dashboard
   ```
-
-### 2. Server Admin (WhatsApp Bot)
-
-- Menjalankan bot WhatsApp untuk monitoring
-- Terdiri dari:
-  - wa.js - Bot untuk registrasi
-  - monitor.js - Service monitoring
-- Fitur:
-  - Registrasi node baru
-  - Monitoring multiple node
-  - Notifikasi otomatis
 
 ## Instalasi
 
@@ -70,27 +59,6 @@ sudo apt-get install -y \
 chmod +x start-admin.sh start-user.sh ws.sh
 ```
 
-### 4. Struktur Directory
-
-```
-/root/notif/
-├── config/
-│   └── allowlist.json    # Konfigurasi server
-├── monitor.js           # Service monitoring
-├── server.js           # Web API server
-├── wa.js              # WhatsApp bot
-├── ws.sh             # WebSocket tunnel
-├── start-admin.sh    # Script admin service
-└── start-user.sh     # Script user service
-
-/root/logs/
-├── startup.log    # Log startup service
-├── wa.log        # Log WhatsApp bot
-├── monitor.log   # Log monitoring
-├── server.log    # Log API server
-└── ws.log        # Log websocket
-```
-
 ## Setup Web API
 
 ### 1. Jalankan Service
@@ -106,7 +74,7 @@ cd /root/notif
 tail -f /root/logs/server.log
 ```
 
-Format response /cek:
+Format response http://<ip>:<port>/cek:
 
 ```json
 {
@@ -145,48 +113,25 @@ Chat ke nomor: 081932266177
 6. Konfirmasi dengan 'ya'
 ```
 
-## Setup WhatsApp Bot
+## Struktur Directory
 
-### 1. Persiapan
-
-- Siapkan nomor WhatsApp baru untuk bot
-- Pastikan bisa akses WhatsApp Web
-
-### 2. Jalankan Service
-
-```bash
-./start-admin.sh start
 ```
+/root/notif/
+├── config/
+│   └── allowlist.json    # Konfigurasi server
+├── monitor.js           # Service monitoring
+├── server.js           # Web API server
+├── wa.js              # WhatsApp bot
+├── ws.sh             # WebSocket tunnel
+├── start-admin.sh    # Script admin service
+└── start-user.sh     # Script user service
 
-### 3. Scan QR Code
-
-```bash
-# Terminal 1 - Untuk wa.js
-tail -f /root/logs/wa.log
-
-# Terminal 2 - Untuk monitor.js
-tail -f /root/logs/monitor.log
-```
-
-Langkah scan:
-
-1. Buka WhatsApp
-2. Klik titik 3 pojok kanan atas
-3. Pilih "Perangkat Tertaut"
-4. Scan kedua QR Code
-5. Tunggu proses auth selesai
-
-### 4. Contoh Format allowlist.json yang akan terjadi selesai register
-
-```json
-{
-  "6285xxxxxx": {
-    "ip": "xxx.xx.xxx.xxx",
-    "port": "8088",
-    "name": "Server 1",
-    "address": "hmpxxxxxxxxxxxxxxxxx"
-  }
-}
+/root/logs/
+├── startup.log    # Log startup service
+├── wa.log        # Log WhatsApp bot
+├── monitor.log   # Log monitoring
+├── server.log    # Log API server
+└── ws.log        # Log websocket
 ```
 
 ## Command Service
