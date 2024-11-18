@@ -7,7 +7,7 @@ Sistem untuk monitoring node Humanode dengan fitur web API dan notifikasi WhatsA
 1. [Cara Kerja Sistem](#cara-kerja-sistem)
 2. [Instalasi](#instalasi)
 3. [Setup Web API](#setup-web-api)
-4. [Setup admin Bot](#setup-admin-bot)
+4. [Setup Admin Bot](#setup-admin-bot)
 5. [Command Service](#command-service)
 6. [API Documentation](#api-documentation)
 7. [Monitoring & Notifikasi](#monitoring--notifikasi)
@@ -113,9 +113,9 @@ Chat ke nomor: 081932266177
 6. Konfirmasi dengan 'ya'
 ```
 
-## SETUP WEB API
+## SETUP ADMIN BOT
 
-Jika anda ingin menjalankan monitoring dan admin bot sendiri anda bisa ke sini untuk setup nya [Setup Web API](https://github.com/caraka15/notif/blob/main/BOT_ADMIN.md)
+Jika anda ingin menjalankan monitoring dan admin bot sendiri anda bisa ke sini untuk setup nya [Setup Admin Bot](https://github.com/caraka15/notif/blob/main/BOT_ADMIN.md)
 
 ## Struktur Directory
 

@@ -24,16 +24,16 @@ stop_if_running() {
     fi
 }
 
-# Fungsi untuk memulai WhatsApp bot
+# Fungsi untuk memulai Telegram bot
 start_tele_bot() {
-    log_message "Memulai WhatsApp Bot..."
+    log_message "Memulai Telegram Bot..."
     nohup node tele.js > "$LOG_DIR/tele.log" 2>&1 &
     sleep 3
     
     if is_process_running "tele.js"; then
-        log_message "WhatsApp Bot berhasil dijalankan"
+        log_message "Telegram Bot berhasil dijalankan"
     else
-        log_message "GAGAL menjalankan WhatsApp Bot"
+        log_message "GAGAL menjalankan Telegram Bot"
         return 1
     fi
 }
