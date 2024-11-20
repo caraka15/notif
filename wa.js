@@ -10,7 +10,6 @@ const CONFIG_DIR = path.join(ROOT_DIR, 'config');
 
 function loadAllowlist() {
     try {
-        // Pastikan directory config ada
         if (!fs.existsSync(CONFIG_DIR)) {
             fs.mkdirSync(CONFIG_DIR, { recursive: true });
         }
@@ -20,7 +19,6 @@ function loadAllowlist() {
 
         if (!fs.existsSync(allowlistPath)) {
             console.log('Allowlist file tidak ditemukan, membuat file baru...');
-            // Buat file allowlist.json kosong jika belum ada
             const emptyAllowlist = {};
             fs.writeFileSync(allowlistPath, JSON.stringify(emptyAllowlist, null, 4));
             return emptyAllowlist;
@@ -70,6 +68,7 @@ const perintah = `*Perintah yang tersedia:*
 #web - Tampilkan link dashboard
 #reset - Reset dan dapatkan link baru
 #register - Daftarkan server baru
+#unregister - Hapus data server
 #bantuan - Tampilkan pesan ini`;
 
 // Generate QR Code
@@ -87,7 +86,6 @@ client.on('ready', () => {
 async function formatPesanStatus(statusData) {
     try {
         const status = statusData.status;
-        // Tambahkan pengecekan untuk status Inactive
         if (status.result === "Inactive") {
             return `*Status Bioauth:* INACTIVE\n\nSilakan lakukan autentikasi dengan perintah #link`;
         }
@@ -102,7 +100,7 @@ async function formatPesanStatus(statusData) {
 function formatPesanAuth(authData) {
     try {
         if (authData.auth && authData.auth.success) {
-            return `*Link Autentikasi:*\n\n${authData.auth.url}\n\n_Silakan klik link di atas untuk autentikasi_`;
+            return `*Link Autentikasi:*\n\n${authData.auth.url}\n\n_Silakan klik link di atas untuk autentikasi_\n\n_Jika link tidak bisa diakses atau loading terus, gunakan #reset untuk mendapatkan link baru_`;
         }
         return '❌ Link autentikasi tidak tersedia';
     } catch (error) {
@@ -120,7 +118,9 @@ function getApiEndpoint(number) {
         }
         return {
             base: `http://${userConfig.ip}:${userConfig.port}`,
-            name: userConfig.name
+            name: userConfig.name,
+            ip: userConfig.ip,
+            port: userConfig.port
         };
     } catch (error) {
         console.error('Error get API endpoint:', error);
@@ -129,6 +129,7 @@ function getApiEndpoint(number) {
 }
 
 const registrationState = new Map();
+const unregisterState = new Map();
 
 async function saveToAllowlist(data) {
     try {
@@ -150,66 +151,129 @@ async function saveToAllowlist(data) {
     }
 }
 
+async function removeFromAllowlist(phone) {
+    try {
+        const currentAllowlist = await loadAllowlist();
+        if (!currentAllowlist[phone]) {
+            return { success: false, message: 'Server tidak ditemukan' };
+        }
+
+        const serverName = currentAllowlist[phone].name;
+        delete currentAllowlist[phone];
+
+        await fs.promises.writeFile(
+            path.join(CONFIG_DIR, 'allowlist.json'),
+            JSON.stringify(currentAllowlist, null, 4)
+        );
+
+        return {
+            success: true,
+            message: `Server ${serverName} berhasil dihapus`
+        };
+    } catch (error) {
+        console.error('Error removing from allowlist:', error);
+        return {
+            success: false,
+            message: 'Terjadi kesalahan saat menghapus data'
+        };
+    }
+}
+
 // Handle pesan
 client.on('message', async msg => {
     try {
-        const content = msg.body.toLowerCase();
         const sender = msg.from.split('@')[0];
+        const content = msg.body;
+        const contentLower = content.toLowerCase();
 
         console.log(`Pesan diterima dari ${sender}: ${content}`);
+        await msg.react('⏳');
+
+        // Cek status unregister
+        if (unregisterState.get(sender)) {
+            if (contentLower === 'ya') {
+                const result = await removeFromAllowlist(sender);
+                if (result.success) {
+                    try {
+                        allowlist = await loadAllowlist();
+                        console.log('Allowlist berhasil dimuat ulang setelah unregister');
+                    } catch (error) {
+                        console.error('Error reloading allowlist:', error);
+                    }
+                    await msg.reply(`✅ ${result.message}`);
+                    await msg.react('✅');
+                } else {
+                    await msg.reply(`❌ ${result.message}`);
+                    await msg.react('❌');
+                }
+            } else if (contentLower === 'batal') {
+                await msg.reply('✅ Penghapusan server dibatalkan');
+                await msg.react('✅');
+            } else {
+                await msg.reply('❌ Silakan ketik *ya* untuk konfirmasi atau *batal* untuk membatalkan');
+                await msg.react('❌');
+                return;
+            }
+            unregisterState.delete(sender);
+            return;
+        }
 
         // Cek jika dalam proses registrasi
         const registrationProcess = registrationState.get(sender);
-        if (registrationProcess || content === '#register') {
+        if (registrationProcess || contentLower === '#register') {
             // Handle proses registrasi
-            if (content === '#register') {
-                // Cek jika user sudah terdaftar
+            if (contentLower === '#register') {
                 if (getApiEndpoint(sender)) {
                     await msg.reply('❌ Nomor Anda sudah terdaftar.\n\nGunakan perintah lain seperti #cek, #link, atau #web');
+                    await msg.react('❌');
                     return;
                 }
 
-                // Mulai proses registrasi baru
                 registrationState.set(sender, {
                     step: 'ip',
                     data: { phone: sender }
                 });
                 await msg.reply('Mulai proses registrasi server.\n\nSilakan masukkan IP address:');
+                await msg.react('✅');
                 return;
             }
 
             // Lanjutkan proses registrasi yang sedang berjalan
             switch (registrationProcess.step) {
                 case 'ip':
-                    // Validasi IP
                     if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(msg.body)) {
                         await msg.reply('❌ Format IP tidak valid.\n\nSilakan masukkan IP yang benar (contoh: 152.42.227.96):');
+                        await msg.react('❌');
                         return;
                     }
                     registrationProcess.data.ip = msg.body;
                     registrationProcess.step = 'port';
                     await msg.reply('Masukkan port server:');
+                    await msg.react('✅');
                     break;
 
                 case 'port':
-                    // Validasi port
                     if (!/^\d+$/.test(msg.body) || parseInt(msg.body) > 65535 || parseInt(msg.body) < 1) {
                         await msg.reply('❌ Port tidak valid.\n\nSilakan masukkan port yang benar (contoh: 8088):');
+                        await msg.react('❌');
                         return;
                     }
                     registrationProcess.data.port = msg.body;
                     registrationProcess.step = 'name';
                     await msg.reply('Masukkan nama server:');
+                    await msg.react('✅');
                     break;
 
                 case 'name':
                     if (msg.body.length < 1 || msg.body.length > 30) {
                         await msg.reply('❌ Nama server harus antara 1-30 karakter.\n\nSilakan masukkan nama server:');
+                        await msg.react('❌');
                         return;
                     }
                     registrationProcess.data.name = msg.body;
                     registrationProcess.step = 'address';
                     await msg.reply('Masukkan address HMND (opsional):\n\n_Address ini untuk melakukan pengecekan jika humanode sudah didistribusikan._\n\nKetik *skip* jika tidak ingin mengisi address.');
+                    await msg.react('✅');
                     break;
 
                 case 'address':
@@ -220,7 +284,6 @@ client.on('message', async msg => {
                     }
                     registrationProcess.step = 'confirm';
 
-                    // Tampilkan konfirmasi dengan format yang rapi
                     const confirmMessage = `*Konfirmasi Data Server*\n\n` +
                         `*IP:* ${registrationProcess.data.ip}\n` +
                         `*Port:* ${registrationProcess.data.port}\n` +
@@ -228,6 +291,7 @@ client.on('message', async msg => {
                         `*Address HMND:* ${registrationProcess.data.address}\n\n` +
                         `Ketik *ya* untuk konfirmasi atau *tidak* untuk membatalkan.`;
                     await msg.reply(confirmMessage);
+                    await msg.react('✅');
                     break;
 
                 case 'confirm':
@@ -235,7 +299,6 @@ client.on('message', async msg => {
                         try {
                             const saved = await saveToAllowlist(registrationProcess.data);
                             if (saved) {
-                                // Muat ulang allowlist setelah berhasil save
                                 try {
                                     allowlist = await loadAllowlist();
                                     console.log('Allowlist berhasil dimuat ulang setelah registrasi');
@@ -243,26 +306,28 @@ client.on('message', async msg => {
                                     console.error('Error reloading allowlist:', error);
                                 }
 
-                                await msg.reply(`✅ Registrasi server berhasil!\n\n*Server ${registrationProcess.data.name} telah terdaftar.*\n\nGunakan:\n#cek - untuk cek status\n#link - untuk dapat link autentikasi\n#web - untuk dapat link dashboard`);
+                                await msg.reply(`✅ Registrasi server berhasil!\n\n*Server ${registrationProcess.data.name} telah terdaftar.*\n\nSekarang Anda dapat mendapatkan notifikasi jika autentikasi Anda expired, serta Anda dapat menggunakan beberapa command.\n\nGunakan #bantuan untuk melihat daftar command yang tersedia.`);
+                                await msg.react('✅');
                             } else {
                                 await msg.reply('❌ Gagal menyimpan data server. Silakan coba lagi dengan #register');
+                                await msg.react('❌');
                             }
                         } catch (error) {
                             console.error('Error saving to allowlist:', error);
                             await msg.reply('❌ Terjadi kesalahan saat menyimpan data. Silakan coba lagi dengan #register');
+                            await msg.react('❌');
                         }
                     } else if (msg.body.toLowerCase() === 'tidak') {
                         await msg.reply('❌ Registrasi dibatalkan.\n\nGunakan #register untuk memulai registrasi baru.');
+                        await msg.react('❌');
                     } else {
                         await msg.reply('Silakan ketik *ya* untuk konfirmasi atau *tidak* untuk membatalkan.');
-                        registrationState.set(sender, registrationProcess);
                         return;
                     }
                     registrationState.delete(sender);
                     break;
             }
 
-            // Update state
             if (registrationProcess && registrationProcess.step !== 'confirm') {
                 registrationState.set(sender, registrationProcess);
             }
@@ -271,22 +336,25 @@ client.on('message', async msg => {
 
         // Cek allowlist untuk perintah non-registrasi
         const apiEndpoint = getApiEndpoint(sender);
-        if (!apiEndpoint && content !== '#bantuan') {
+        if (!apiEndpoint && contentLower !== '#bantuan' && contentLower !== '#register') {
             console.log(`Akses ditolak untuk nomor: ${sender}`);
             await msg.reply('❌ Maaf, Anda tidak memiliki akses ke layanan ini.\n\nGunakan #register untuk mendaftarkan server Anda atau #bantuan untuk melihat daftar perintah.');
+            await msg.react('❌');
             return;
         }
 
-        switch (content) {
+        switch (contentLower) {
             case '#cek':
                 try {
                     console.log(`Mengecek status untuk ${sender} ke ${apiEndpoint.base}/cek`);
                     const response = await axios.get(`${apiEndpoint.base}/cek`);
                     const statusMessage = await formatPesanStatus(response.data);
                     await msg.reply(`*${apiEndpoint.name}*\n${statusMessage}`);
+                    await msg.react('✅');
                 } catch (error) {
                     console.error('Error cek status:', error);
                     await msg.reply('❌ Terjadi kesalahan saat mengecek status');
+                    await msg.react('❌');
                 }
                 break;
 
@@ -296,128 +364,89 @@ client.on('message', async msg => {
                     const response = await axios.get(`${apiEndpoint.base}/cek`);
                     const authMessage = formatPesanAuth(response.data);
                     await msg.reply(`*${apiEndpoint.name}*\n${authMessage}`);
+                    await msg.react('✅');
                 } catch (error) {
                     console.error('Error ambil link:', error);
                     await msg.reply('❌ Terjadi kesalahan saat mengambil link autentikasi');
+                    await msg.react('❌');
+                }
+                break;
+
+            case '#web':
+                try {
+                    const message = `*${apiEndpoint.name}*\n\n*Link Dashboard:*\n\nhttp://${apiEndpoint.ip}:${apiEndpoint.port}`;
+                    await msg.reply(message);
+                    await msg.react('✅');
+                } catch (error) {
+                    console.error('Error menampilkan link dashboard:', error);
+                    await msg.reply('❌ Terjadi kesalahan saat mengambil link dashboard');
+                    await msg.react('❌');
+                }
+                break;
+
+            case '#unregister':
+                try {
+                    const apiEndpoint = getApiEndpoint(sender);
+                    if (!apiEndpoint) {
+                        await msg.reply('❌ Anda tidak memiliki server yang terdaftar');
+                        await msg.react('❌');
+                        return;
+                    }
+
+                    const serverInfo = `*${apiEndpoint.name}*\n` +
+                        `IP: ${apiEndpoint.ip}\n` +
+                        `Port: ${apiEndpoint.port}`;
+
+                    unregisterState.set(sender, true);
+                    await msg.reply(
+                        `⚠️ *Konfirmasi Penghapusan Server*\n\n` +
+                        `Anda akan menghapus server:\n${serverInfo}\n\n` +
+                        `Ketik *ya* untuk konfirmasi atau ketik *batal* untuk membatalkan.`
+                    );
+                    await msg.react('✅');
+                } catch (error) {
+                    console.error('Error unregister:', error);
+                    await msg.reply('❌ Terjadi kesalahan saat menghapus server');
+                    await msg.react('❌');
+                }
+                break;
+
+            case '#reset':
+                try {
+                    console.log(`Melakukan reset untuk ${sender} ke ${apiEndpoint.base}/reset`);
+                    await msg.reply('⏳ Sedang melakukan reset WebSocket...');
+
+                    const response = await axios.get(`${apiEndpoint.base}/reset`);
+
+                    if (response.data.success) {
+                        const message = `✅ *Reset WebSocket Berhasil*\n\n` +
+                            `*${apiEndpoint.name}*\n` +
+                            `*Link Autentikasi Baru:*\n\n` +
+                            `${response.data.auth.url}\n\n` +
+                            `_Link sudah dapat digunakan untuk autentikasi_`;
+                        await msg.reply(message);
+                        await msg.react('✅');
+                    } else {
+                        throw new Error(response.data.message || 'Reset gagal');
+                    }
+                } catch (error) {
+                    console.error('Error reset:', error);
+                    await msg.reply('❌ Terjadi kesalahan saat melakukan reset');
+                    await msg.react('❌');
                 }
                 break;
 
             case '#bantuan':
                 await msg.reply(perintah);
-                break;
-
-            case '#register':
-                try {
-                    const currentState = registrationState.get(sender);
-
-                    // Cek jika user sudah terdaftar
-                    if (getApiEndpoint(sender) && !currentState) {
-                        await msg.reply('❌ Nomor Anda sudah terdaftar.\n\nGunakan perintah lain seperti #cek, #link, atau #web');
-                        return;
-                    }
-
-                    if (!currentState) {
-                        // Mulai proses registrasi
-                        registrationState.set(sender, {
-                            step: 'ip',
-                            data: { phone: sender }
-                        });
-                        await msg.reply('Mulai proses registrasi server.\n\nSilakan masukkan IP address:');
-                        return;
-                    }
-
-                    // Handle setiap langkah registrasi
-                    switch (currentState.step) {
-                        case 'ip':
-                            // Validasi IP
-                            if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(msg.body)) {
-                                await msg.reply('❌ Format IP tidak valid.\n\nSilakan masukkan IP yang benar (contoh: 152.42.227.96):');
-                                return;
-                            }
-                            currentState.data.ip = msg.body;
-                            currentState.step = 'port';
-                            await msg.reply('Masukkan port server:');
-                            break;
-
-                        case 'port':
-                            // Validasi port
-                            if (!/^\d+$/.test(msg.body) || parseInt(msg.body) > 65535 || parseInt(msg.body) < 1) {
-                                await msg.reply('❌ Port tidak valid.\n\nSilakan masukkan port yang benar (contoh: 8088):');
-                                return;
-                            }
-                            currentState.data.port = msg.body;
-                            currentState.step = 'name';
-                            await msg.reply('Masukkan nama server:');
-                            break;
-
-                        case 'name':
-                            if (msg.body.length < 1 || msg.body.length > 30) {
-                                await msg.reply('❌ Nama server harus antara 1-30 karakter.\n\nSilakan masukkan nama server:');
-                                return;
-                            }
-                            currentState.data.name = msg.body;
-                            currentState.step = 'address';
-                            await msg.reply('Masukkan address HMND:');
-                            break;
-
-                        case 'address':
-                            // Validasi format address HMND
-                            if (!/^0x[a-fA-F0-9]{40}$/.test(msg.body)) {
-                                await msg.reply('❌ Format address HMND tidak valid.\n\nSilakan masukkan address yang benar (contoh: 0x1234...):');
-                                return;
-                            }
-                            currentState.data.address = msg.body;
-                            currentState.step = 'confirm';
-
-                            // Tampilkan konfirmasi dengan format yang rapi
-                            const confirmMessage = `*Konfirmasi Data Server*\n\n` +
-                                `*IP:* ${currentState.data.ip}\n` +
-                                `*Port:* ${currentState.data.port}\n` +
-                                `*Nama:* ${currentState.data.name}\n` +
-                                `*Address HMND:* ${currentState.data.address}\n\n` +
-                                `Ketik *ya* untuk konfirmasi atau *tidak* untuk membatalkan.`;
-                            await msg.reply(confirmMessage);
-                            break;
-
-                        case 'confirm':
-                            if (msg.body.toLowerCase() === 'ya') {
-                                try {
-                                    const saved = await saveToAllowlist(currentState.data);
-                                    if (saved) {
-                                        await msg.reply(`✅ Registrasi server berhasil!\n\n*Server ${currentState.data.name} telah terdaftar.*\n\nGunakan:\n#cek - untuk cek status\n#link - untuk dapat link autentikasi\n#web - untuk dapat link dashboard`);
-                                    } else {
-                                        await msg.reply('❌ Gagal menyimpan data server. Silakan coba lagi dengan #register');
-                                    }
-                                } catch (error) {
-                                    console.error('Error saving to allowlist:', error);
-                                    await msg.reply('❌ Terjadi kesalahan saat menyimpan data. Silakan coba lagi dengan #register');
-                                }
-                            } else if (msg.body.toLowerCase() === 'tidak') {
-                                await msg.reply('❌ Registrasi dibatalkan.\n\nGunakan #register untuk memulai registrasi baru.');
-                            } else {
-                                await msg.reply('Silakan ketik *ya* untuk konfirmasi atau *tidak* untuk membatalkan.');
-                                return; // Jangan hapus state karena masih menunggu konfirmasi yang valid
-                            }
-                            // Hapus state setelah selesai atau dibatalkan
-                            registrationState.delete(sender);
-                            break;
-                    }
-
-                    // Update state jika proses masih berlanjut
-                    if (currentState && currentState.step !== 'confirm') {
-                        registrationState.set(sender, currentState);
-                    }
-
-                } catch (error) {
-                    console.error('Error handling registration:', error);
-                    await msg.reply('❌ Terjadi kesalahan dalam proses registrasi. Silakan coba lagi dengan #register');
-                    registrationState.delete(sender);
-                }
+                await msg.react('✅');
                 break;
 
             default:
-                if (content.startsWith('#')) {
+                if (contentLower.startsWith('#')) {
                     await msg.reply(perintah);
+                    await msg.react('✅');
+                } else {
+                    await msg.react(''); // Hapus reaksi loading jika bukan command
                 }
                 break;
         }
@@ -425,6 +454,7 @@ client.on('message', async msg => {
         console.error('Error proses pesan:', error);
         try {
             await msg.reply('❌ Terjadi kesalahan sistem');
+            await msg.react('❌');
         } catch (replyError) {
             console.error('Error saat mengirim pesan error:', replyError);
         }

@@ -18,11 +18,11 @@ async function getAuthUrl() {
     try {
         const logPath = '/root/.humanode/workspaces/default/tunnel/logs.txt';
         const logContent = await fs.readFile(logPath, 'utf8');
-        
+
         // Find all WSS URLs in the log file
         const wssUrlRegex = /wss:\/\/\S+/g;
         const matches = logContent.match(wssUrlRegex);
-        
+
         if (matches && matches.length > 0) {
             // Get the last URL
             const lastUrl = matches[matches.length - 1];
@@ -46,6 +46,37 @@ async function getAuthUrl() {
         return {
             success: false,
             message: 'Error membaca file logs',
+            error: error.message
+        };
+    }
+}
+
+// Fungsi untuk menjalankan reset command
+async function runResetCommand() {
+    try {
+        const command = 'cd /root/notif/ && ./start-user.sh restart ws';
+        const { stdout, stderr } = await execPromise(command);
+
+        // Cek output untuk memastikan proses berhasil
+        if (stdout.includes('Selesai melakukan restart layanan')) {
+            return {
+                success: true,
+                message: 'Reset berhasil dilakukan',
+                details: stdout
+            };
+        } else {
+            return {
+                success: false,
+                message: 'Reset gagal: Output tidak sesuai yang diharapkan',
+                details: stdout,
+                error: stderr
+            };
+        }
+    } catch (error) {
+        console.error('Error executing reset command:', error);
+        return {
+            success: false,
+            message: 'Reset gagal dijalankan',
             error: error.message
         };
     }
@@ -105,7 +136,7 @@ app.get('/cek', async (req, res) => {
         const expiresAt = statusResponse.data.result.Active.expires_at;
         const now = Date.now();
         const remaining = expiresAt - now;
-        
+
         const hours = Math.floor(remaining / (1000 * 60 * 60));
         const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
 
@@ -125,6 +156,43 @@ app.get('/cek', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal Server Error',
+            error: error.message
+        });
+    }
+});
+
+// Reset endpoint
+app.get('/reset', async (req, res) => {
+    try {
+        console.log('Menjalankan reset WebSocket...');
+        const result = await runResetCommand();
+
+        if (result.success) {
+            // Tunggu sebentar untuk memastikan service sudah benar-benar restart
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Ambil URL baru setelah reset
+            const authUrlResult = await getAuthUrl();
+
+            res.json({
+                success: true,
+                message: result.message,
+                details: result.details,
+                auth: authUrlResult
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: result.message,
+                details: result.details,
+                error: result.error
+            });
+        }
+    } catch (error) {
+        console.error('Error during reset:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Terjadi kesalahan saat melakukan reset',
             error: error.message
         });
     }
@@ -164,23 +232,36 @@ app.get('/', (req, res) => {
                 .error {
                     color: red;
                 }
-                .refresh-btn {
+                .refresh-btn, .reset-btn {
                     background-color: #0066cc;
                     color: white;
                     border: none;
                     padding: 10px 20px;
                     border-radius: 4px;
                     cursor: pointer;
+                    margin-right: 10px;
+                }
+                .reset-btn {
+                    background-color: #dc3545;
                 }
                 .refresh-btn:hover {
                     background-color: #0052a3;
+                }
+                .reset-btn:hover {
+                    background-color: #c82333;
+                }
+                .button-group {
+                    margin-bottom: 15px;
                 }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>Bioauth Status</h1>
-                <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+                <div class="button-group">
+                    <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+                    <button class="reset-btn" onclick="resetWebSocket()">Reset WebSocket</button>
+                </div>
                 <div id="statusContent" class="status-box">Loading...</div>
             </div>
 
@@ -192,14 +273,12 @@ app.get('/', (req, res) => {
                         
                         let html = '<h2>Status</h2>';
                         
-                        // Handle inactive status
                         if (data.status.result === "Inactive") {
                             html += '<p class="error">Status: INACTIVE</p>';
                         } else {
                             html += '<p>Sisa waktu: ' + data.status.remaining_time.formatted + '</p>';
                         }
 
-                        // Add auth URL
                         if (data.auth.success) {
                             html += '<h2>Auth URL</h2>';
                             html += '<p>URL: <a href="' + data.auth.url + '" target="_blank" class="auth-link">' + 
@@ -215,9 +294,37 @@ app.get('/', (req, res) => {
                     }
                 }
 
-                function refreshData() {
-                    document.getElementById('statusContent').innerHTML = 'Loading...';
-                    fetchData();
+                async function resetWebSocket() {
+                    if (!confirm('Apakah Anda yakin ingin melakukan reset WebSocket?')) {
+                        return;
+                    }
+                    
+                    try {
+                        document.getElementById('statusContent').innerHTML = 'Melakukan reset WebSocket...';
+                        const response = await fetch('/reset');
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            let html = '<h2>Reset Berhasil</h2>';
+                            html += '<p>' + data.message + '</p>';
+                            
+                            if (data.auth.success) {
+                                html += '<h2>URL Autentikasi Baru</h2>';
+                                html += '<p>URL: <a href="' + data.auth.url + '" target="_blank" class="auth-link">' + 
+                                      data.auth.url + '</a></p>';
+                            }
+                            
+                            document.getElementById('statusContent').innerHTML = html;
+                            // Refresh data setelah beberapa detik
+                            setTimeout(fetchData, 3000);
+                        } else {
+                            document.getElementById('statusContent').innerHTML = 
+                                '<p class="error">Reset gagal: ' + data.message + '</p>';
+                        }
+                    } catch (error) {
+                        document.getElementById('statusContent').innerHTML = 
+                            '<p class="error">Error saat melakukan reset: ' + error.message + '</p>';
+                    }
                 }
 
                 // Initial fetch

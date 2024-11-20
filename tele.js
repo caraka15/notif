@@ -3,12 +3,13 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const config = require('./config/config.json');
 
 // Konfigurasi
 const ROOT_DIR = '/root/notif';
 const CONFIG_DIR = path.join(ROOT_DIR, 'config');
 const ALLOWLIST_PATH = path.join(CONFIG_DIR, 'allowlist-tele.json');
-const BOT_TOKEN = 'YOUR_MONITOR_BOT_TOKEN';
+const BOT_TOKEN = config.botToken;
 
 // State untuk registrasi
 const registrationState = new Map();

@@ -3,6 +3,7 @@ const { ApiPromise, WsProvider } = require('@polkadot/api');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const config = require('./config/config.json');
 
 // Konfigurasi
 const ROOT_DIR = '/root/notif';
@@ -10,7 +11,7 @@ const CONFIG_DIR = path.join(ROOT_DIR, 'config');
 const ALLOWLIST_PATH = path.join(CONFIG_DIR, 'allowlist-tele.json');
 const LOG_DIR = '/root/logs';
 const LOG_FILE = path.join(LOG_DIR, 'monitor-tele.log');
-const BOT_TOKEN = 'YOUR_MONITOR_BOT_TOKEN';
+const BOT_TOKEN = config.botToken;
 
 // Konfigurasi interval
 const BIOAUTH_INTERVAL = 5 * 60 * 1000; // 5 menit

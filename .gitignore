@@ -11,3 +11,6 @@ yarn-error.log
 
 # Config
 config/
+.wwebjs_auth/
+.wwebjs_auth_monitor/
+.wwebjs_cache/
