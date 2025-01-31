@@ -2,6 +2,48 @@
 
 pilih salah satu mau WHATSAPP BOT ATAU TELEGRAM BOT yang dijalankan
 
+### 1. Install dependencies tambahan
+  ```
+  apt-get update && apt-get install -y \
+      # Basic Chrome dependencies
+      libx11-xcb1 \
+      libxcb1 \
+      libxcomposite1 \
+      libxcursor1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxi6 \
+      libxrandr2 \
+      libxrender1 \
+      libxss1 \
+      libxtst6 \
+      # SSL and basic utilities
+      ca-certificates \
+      fonts-liberation \
+      libappindicator1 \
+      libnss3 \
+      lsb-release \
+      xdg-utils \
+      wget \
+      # Sound and media dependencies
+      libasound2 \
+      # GTK and visual dependencies
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libgdk-pixbuf2.0-0 \
+      libgtk-3-0 \
+      libpango-1.0-0 \
+      libpangocairo-1.0-0 \
+      # Additional dependencies for stability
+      libgbm-dev \
+      libglib2.0-0 \
+      libnss3-dev \
+      libxcb-dri3-0 \
+      libdrm2 \
+      libgbm1
+  ```
 ### 2. Server Admin (WhatsApp Bot)
 
 - Menjalankan bot WhatsApp untuk monitoring
