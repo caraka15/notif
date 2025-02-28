@@ -31,6 +31,10 @@ Sistem untuk monitoring node Humanode dengan fitur web API dan notifikasi WhatsA
 ## Instalasi
 
 ### Install node JS `jika belum`
+```
+apt update && apt upgrade -y
+```
+
 
 ```
 cd ~ && curl -sL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh && sudo bash /tmp/nodesource_setup.sh && sudo apt install nodejs -y && node -v
