@@ -185,6 +185,28 @@ async function checkBioauth(phone, serverConfig) {
 
         await logMessage(`[BIOAUTH] Received status for ${serverConfig.name}: ${JSON.stringify(data.status.result)}`);
 
+        // Jika server down - HANYA ini yang perlu dinotifikasikan untuk masalah koneksi
+        if (data.status.result === "ServerDown") {
+            const message = `🔴 *${serverConfig.name}* tidak merespons!\n\n` +
+                `IP: ${serverConfig.ip}\n` +
+                `Status: Server Down\n\n` +
+                `Layanan Bioauth mungkin mati. Mohon cek server atau restart layanan.`;
+            await sendWhatsAppMessage(phone, message);
+            await logMessage(`[BIOAUTH] Sent server down notification to ${phone} for ${serverConfig.name}`);
+            return;
+        }
+
+        // Jika respons invalid
+        if (data.status.result === "InvalidResponse") {
+            const message = `⚠️ *${serverConfig.name}* mengembalikan respons yang tidak valid!\n\n` +
+                `IP: ${serverConfig.ip}\n` +
+                `Status: Invalid Response\n\n` +
+                `Mohon cek server atau lakukan reset.`;
+            await sendWhatsAppMessage(phone, message);
+            await logMessage(`[BIOAUTH] Sent invalid response notification to ${phone} for ${serverConfig.name}`);
+            return;
+        }
+
         // Jika status Inactive
         if (data.status.result === "Inactive") {
             const message = `⛔ *${serverConfig.name}* tidak aktif!\n\n` +
@@ -196,34 +218,39 @@ async function checkBioauth(phone, serverConfig) {
             return;
         }
 
-        // Cek waktu expired
-        const expiresAt = data.status.result.Active.expires_at;
-        const now = Date.now();
-        const remainingMinutes = Math.floor((expiresAt - now) / (1000 * 60));
+        // Karena pada kasus Active, result berupa object, bukan string
+        if (typeof data.status.result === 'object' && data.status.result.Active) {
+            // Cek waktu expired
+            const expiresAt = data.status.result.Active.expires_at;
+            const now = Date.now();
+            const remainingMinutes = Math.floor((expiresAt - now) / (1000 * 60));
 
-        await logMessage(`[BIOAUTH] ${serverConfig.name} expires in ${remainingMinutes} minutes`);
+            await logMessage(`[BIOAUTH] ${serverConfig.name} expires in ${remainingMinutes} minutes`);
 
-        if (remainingMinutes > 25 && remainingMinutes < 30) {
-            const message = `🟡 *${serverConfig.name}* akan expired dalam 30 menit!\n\n` +
-                `IP: ${serverConfig.ip}\n` +
-                `Sisa waktu: ${data.status.remaining_time.formatted}\n\n` +
-                `Link Re-authentication:\n${data.auth.url}`;
-            await sendWhatsAppMessage(phone, message);
-            await logMessage(`[BIOAUTH] Sent 30-minute warning to ${phone} for ${serverConfig.name}`);
-        } else if (remainingMinutes > 0 && remainingMinutes < 6) {
-            const message = `🔴 *${serverConfig.name}* akan expired dalam 5 menit!\n\n` +
-                `IP: ${serverConfig.ip}\n` +
-                `Sisa waktu: ${data.status.remaining_time.formatted}\n\n` +
-                `Link Re-authentication:\n${data.auth.url}`;
-            await sendWhatsAppMessage(phone, message);
-            await logMessage(`[BIOAUTH] Sent 5-minute warning to ${phone} for ${serverConfig.name}`);
+            if (remainingMinutes > 25 && remainingMinutes < 31) {
+                const message = `🟡 *${serverConfig.name}* akan expired dalam 30 menit!\n\n` +
+                    `IP: ${serverConfig.ip}\n` +
+                    `Sisa waktu: ${data.status.remaining_time.formatted}\n\n` +
+                    `Link Re-authentication:\n${data.auth.url}`;
+                await sendWhatsAppMessage(phone, message);
+                await logMessage(`[BIOAUTH] Sent 30-minute warning to ${phone} for ${serverConfig.name}`);
+            } else if (remainingMinutes > 0 && remainingMinutes < 6) {
+                const message = `🔴 *${serverConfig.name}* akan expired dalam 5 menit!\n\n` +
+                    `IP: ${serverConfig.ip}\n` +
+                    `Sisa waktu: ${data.status.remaining_time.formatted}\n\n` +
+                    `Link Re-authentication:\n${data.auth.url}`;
+                await sendWhatsAppMessage(phone, message);
+                await logMessage(`[BIOAUTH] Sent 5-minute warning to ${phone} for ${serverConfig.name}`);
+            }
         }
 
     } catch (error) {
+        // Hanya log error koneksi tanpa mengirim notifikasi
         await logMessage(`[BIOAUTH] Error checking server ${serverConfig.name}: ${error.message}`);
         if (error.response) {
             await logMessage(`[BIOAUTH] Response error data: ${JSON.stringify(error.response.data)}`);
         }
+        // Tidak mengirim notifikasi untuk error koneksi
     }
 }
 

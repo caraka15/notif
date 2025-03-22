@@ -102,10 +102,14 @@ app.get('/auth', async (req, res) => {
 });
 
 // Bioauth status endpoint
+// Bioauth status endpoint
 app.get('/cek', async (req, res) => {
     try {
-        const [statusResponse, authUrlResult] = await Promise.all([
-            axios.post('http://127.0.0.1:9933', {
+        let statusResponse;
+        const authUrlResult = await getAuthUrl();
+
+        try {
+            statusResponse = await axios.post('http://127.0.0.1:9933', {
                 jsonrpc: '2.0',
                 method: 'bioauth_status',
                 params: [],
@@ -113,10 +117,36 @@ app.get('/cek', async (req, res) => {
             }, {
                 headers: {
                     'Content-Type': 'application/json'
-                }
-            }),
-            getAuthUrl()
-        ]);
+                },
+                timeout: 5000 // Add timeout to prevent hanging
+            });
+        } catch (error) {
+            // Handle case when server is down or not responding
+            res.json({
+                status: {
+                    result: "ServerDown",
+                    remaining_time: {
+                        formatted: "⚠️ Server tidak merespons - Layanan Bioauth mungkin mati"
+                    }
+                },
+                auth: authUrlResult
+            });
+            return;
+        }
+
+        // Check if response data has the expected structure
+        if (!statusResponse.data || !statusResponse.data.result) {
+            res.json({
+                status: {
+                    result: "InvalidResponse",
+                    remaining_time: {
+                        formatted: "⚠️ Respons server tidak valid - Silakan coba reset"
+                    }
+                },
+                auth: authUrlResult
+            });
+            return;
+        }
 
         // Handle inactive status
         if (statusResponse.data.result === "Inactive") {
@@ -266,7 +296,7 @@ app.get('/', (req, res) => {
             </div>
 
             <script>
-                async function fetchData() {
+               async function fetchData() {
                     try {
                         const response = await fetch('/cek');
                         const data = await response.json();
@@ -275,6 +305,11 @@ app.get('/', (req, res) => {
                         
                         if (data.status.result === "Inactive") {
                             html += '<p class="error">Status: INACTIVE</p>';
+                        } else if (data.status.result === "ServerDown") {
+                            html += '<p class="error">⚠️ SERVER DOWN: ' + data.status.remaining_time.formatted + '</p>';
+                            html += '<p>Silakan coba reset WebSocket atau restart server</p>';
+                        } else if (data.status.result === "InvalidResponse") {
+                            html += '<p class="error">⚠️ RESPONS TIDAK VALID: ' + data.status.remaining_time.formatted + '</p>';
                         } else {
                             html += '<p>Sisa waktu: ' + data.status.remaining_time.formatted + '</p>';
                         }
@@ -282,7 +317,7 @@ app.get('/', (req, res) => {
                         if (data.auth.success) {
                             html += '<h2>Auth URL</h2>';
                             html += '<p>URL: <a href="' + data.auth.url + '" target="_blank" class="auth-link">' + 
-                                  data.auth.url + '</a></p>';
+                                data.auth.url + '</a></p>';
                         } else {
                             html += '<p class="error">' + data.auth.message + '</p>';
                         }
