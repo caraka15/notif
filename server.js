@@ -109,7 +109,7 @@ app.get('/cek', async (req, res) => {
         const authUrlResult = await getAuthUrl();
 
         try {
-            statusResponse = await axios.post('http://127.0.0.1:9933', {
+            statusResponse = await axios.post('http://127.0.0.1:9944', {
                 jsonrpc: '2.0',
                 method: 'bioauth_status',
                 params: [],
