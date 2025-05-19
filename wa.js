@@ -1,4 +1,4 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia, Buttons } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 const fs = require('fs');
@@ -7,6 +7,15 @@ const path = require('path');
 // Path ke root directory
 const ROOT_DIR = '/root/notif';
 const CONFIG_DIR = path.join(ROOT_DIR, 'config');
+const MEDIA_DIR = path.join(ROOT_DIR, 'media'); // New directory for temporary media storage
+
+// Create media directory if it doesn't exist
+if (!fs.existsSync(MEDIA_DIR)) {
+    fs.mkdirSync(MEDIA_DIR, { recursive: true });
+}
+
+// Set admin number(s) - add your admin phone number here
+const ADMIN_NUMBERS = ['6285156371696']; // Replace with your admin number(s)
 
 function loadAllowlist() {
     try {
@@ -61,7 +70,10 @@ const client = new Client({
     }
 });
 
-// Daftar perintah
+// Map to track announcement states
+const announcementState = new Map();
+
+// Daftar perintah untuk user biasa
 const perintah = `*Perintah yang tersedia:*
 #cek - Cek status bioauth dan sisa waktu
 #link - Dapatkan link autentikasi
@@ -70,6 +82,16 @@ const perintah = `*Perintah yang tersedia:*
 #register - Daftarkan server baru
 #unregister - Hapus data server
 #bantuan - Tampilkan pesan ini`;
+
+// Daftar perintah admin
+const adminPerintah = `*Perintah Admin:*
+#announce <pesan> - Kirim pengumuman ke semua user terdaftar
+#announce-media - Kirim pengumuman dengan gambar/video ke semua user
+#listusers - Tampilkan daftar semua user terdaftar
+#stats - Tampilkan statistik server
+#updateuser <nomor> <parameter> <nilai> - Update data user
+
+${perintah}`;
 
 // Generate QR Code
 client.on('qr', qr => {
@@ -89,7 +111,23 @@ async function formatPesanStatus(statusData) {
         if (status.result === "Inactive") {
             return `*Status Bioauth:* INACTIVE\n\nSilakan lakukan autentikasi dengan perintah #link`;
         }
-        return `*Status Bioauth:*\nWaktu tersisa: ${status.remaining_time.formatted}`;
+
+        const totalHours = status.remaining_time.hours;
+        const minutes = status.remaining_time.minutes;
+
+        const days = Math.floor(totalHours / 24);
+        const remainingHours = totalHours % 24;
+
+        let formattedTime = "";
+        if (days > 0) {
+            formattedTime += `${days} hari `;
+        }
+        if (remainingHours > 0 || days > 0) { // Tampilkan jam jika ada hari atau jam tersisa
+            formattedTime += `${remainingHours} jam `;
+        }
+        formattedTime += `${minutes} menit`;
+
+        return `*Status Bioauth:*\nWaktu tersisa: ${formattedTime.trim()}`;
     } catch (error) {
         console.error('Error format pesan status:', error);
         return '❌ Format status tidak valid';
@@ -179,6 +217,137 @@ async function removeFromAllowlist(phone) {
     }
 }
 
+// Check if a number is an admin
+function isAdmin(number) {
+    return ADMIN_NUMBERS.includes(number);
+}
+
+// Function to download media from message
+async function downloadMedia(msg) {
+    try {
+        if (!msg.hasMedia) return null;
+
+        const media = await msg.downloadMedia();
+        const extension = media.mimetype.split('/')[1];
+        const filename = `${Date.now()}.${extension}`;
+        const filepath = path.join(MEDIA_DIR, filename);
+
+        // Convert base64 to file
+        const buffer = Buffer.from(media.data, 'base64');
+        fs.writeFileSync(filepath, buffer);
+
+        console.log(`Media downloaded to ${filepath}`);
+
+        return {
+            filepath,
+            mimetype: media.mimetype,
+            filename,
+            media
+        };
+    } catch (error) {
+        console.error('Error downloading media:', error);
+        return null;
+    }
+}
+
+// Function to send announcement to all users
+async function sendAnnouncement(message, media = null, senderName = 'Admin') {
+    try {
+        const currentAllowlist = await loadAllowlist();
+        const userCount = Object.keys(currentAllowlist).length;
+        let sentCount = 0;
+        let errorCount = 0;
+
+        const formattedAnnouncement = `*PENGUMUMAN*\n\n${message}\n\n_From: ${senderName}_`;
+
+        for (const number in currentAllowlist) {
+            try {
+                if (media) {
+                    // Send with media
+                    await client.sendMessage(`${number}@c.us`, media, { caption: formattedAnnouncement });
+                } else {
+                    // Send text only
+                    await client.sendMessage(`${number}@c.us`, formattedAnnouncement);
+                }
+
+                console.log(`Announcement sent to ${number}`);
+                sentCount++;
+                // Add a small delay to prevent flooding
+                await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (error) {
+                console.error(`Failed to send announcement to ${number}:`, error);
+                errorCount++;
+            }
+        }
+
+        return {
+            success: true,
+            totalUsers: userCount,
+            sentCount,
+            errorCount,
+            message: `Pengumuman berhasil dikirim ke ${sentCount} dari ${userCount} user`
+        };
+    } catch (error) {
+        console.error('Error sending announcement:', error);
+        return {
+            success: false,
+            message: 'Terjadi kesalahan saat mengirim pengumuman'
+        };
+    }
+}
+
+// Function to list all registered users
+async function listRegisteredUsers() {
+    try {
+        const currentAllowlist = await loadAllowlist();
+        const userCount = Object.keys(currentAllowlist).length;
+
+        if (userCount === 0) {
+            return "Tidak ada user yang terdaftar";
+        }
+
+        let userList = `*Daftar User Terdaftar (${userCount}):*\n\n`;
+
+        for (const number in currentAllowlist) {
+            const userData = currentAllowlist[number];
+            userList += `*${userData.name}*\n` +
+                `Nomor: ${number}\n` +
+                `IP: ${userData.ip}:${userData.port}\n` +
+                `Address HMND: ${userData.address || 'Tidak diset'}\n\n`;
+        }
+
+        return userList;
+    } catch (error) {
+        console.error('Error listing users:', error);
+        return '❌ Terjadi kesalahan saat mengambil daftar user';
+    }
+}
+
+// Clean up temporary media files that are older than 1 hour
+function cleanupMediaFiles() {
+    try {
+        const files = fs.readdirSync(MEDIA_DIR);
+        const now = Date.now();
+        const oneHourMs = 60 * 60 * 1000;
+
+        for (const file of files) {
+            const filepath = path.join(MEDIA_DIR, file);
+            const stats = fs.statSync(filepath);
+            const fileAge = now - stats.mtimeMs;
+
+            if (fileAge > oneHourMs) {
+                fs.unlinkSync(filepath);
+                console.log(`Deleted old media file: ${filepath}`);
+            }
+        }
+    } catch (error) {
+        console.error('Error cleaning up media files:', error);
+    }
+}
+
+// Set up periodic cleanup
+setInterval(cleanupMediaFiles, 30 * 60 * 1000); // Run every 30 minutes
+
 // Handle pesan
 client.on('message', async msg => {
     try {
@@ -189,6 +358,149 @@ client.on('message', async msg => {
         console.log(`Pesan diterima dari ${sender}: ${content}`);
         await msg.react('⏳');
 
+        // Check if sender is admin
+        const senderIsAdmin = isAdmin(sender);
+
+        // Check if in announcement state
+        if (announcementState.has(sender)) {
+            const state = announcementState.get(sender);
+
+            if (state.waitingFor === 'message') {
+                // Save the message and wait for media
+                announcementState.set(sender, {
+                    waitingFor: 'media',
+                    message: content
+                });
+
+                await msg.reply('✅ Pesan diterima. Sekarang kirim gambar atau video untuk pengumuman.\n\nKetik *batal* untuk membatalkan atau *skip* jika tidak ingin menambahkan media.');
+                await msg.react('✅');
+                return;
+            } else if (state.waitingFor === 'media') {
+                if (contentLower === 'batal') {
+                    announcementState.delete(sender);
+                    await msg.reply('❌ Pengumuman dibatalkan.');
+                    await msg.react('❌');
+                    return;
+                }
+
+                if (contentLower === 'skip') {
+                    // Send announcement without media
+                    await msg.reply('⏳ Mengirim pengumuman tanpa media ke semua user terdaftar...');
+
+                    const result = await sendAnnouncement(state.message, null, `Admin (${sender})`);
+
+                    if (result.success) {
+                        await msg.reply(`✅ ${result.message}`);
+                        await msg.react('✅');
+                    } else {
+                        await msg.reply(`❌ ${result.message}`);
+                        await msg.react('❌');
+                    }
+
+                    announcementState.delete(sender);
+                    return;
+                }
+
+                // Check if the message has media
+                if (msg.hasMedia) {
+                    await msg.reply('⏳ Mengunduh media...');
+
+                    const mediaInfo = await downloadMedia(msg);
+                    if (!mediaInfo) {
+                        await msg.reply('❌ Gagal mengunduh media. Coba lagi atau ketik *skip* untuk mengirim tanpa media.');
+                        await msg.react('❌');
+                        return;
+                    }
+
+                    await msg.reply('⏳ Mengirim pengumuman dengan media ke semua user terdaftar...');
+
+                    const result = await sendAnnouncement(state.message, mediaInfo.media, `Admin (${sender})`);
+
+                    if (result.success) {
+                        await msg.reply(`✅ ${result.message}`);
+                        await msg.react('✅');
+                    } else {
+                        await msg.reply(`❌ ${result.message}`);
+                        await msg.react('❌');
+                    }
+
+                    announcementState.delete(sender);
+                    return;
+                } else {
+                    await msg.reply('❌ Tidak ada media terdeteksi. Kirim gambar/video atau ketik *skip* untuk melanjutkan tanpa media, atau *batal* untuk membatalkan.');
+                    await msg.react('❌');
+                    return;
+                }
+            }
+        }
+
+        // Handle admin commands
+        if (senderIsAdmin && contentLower === '#announce-media') {
+            announcementState.set(sender, {
+                waitingFor: 'message'
+            });
+
+            await msg.reply('Silakan masukkan pesan pengumuman:');
+            await msg.react('✅');
+            return;
+        }
+
+        if (senderIsAdmin && contentLower.startsWith('#announce ')) {
+            const announcement = content.substring('#announce '.length).trim();
+
+            if (announcement.length < 3) {
+                await msg.reply('❌ Pesan pengumuman terlalu pendek. Minimal 3 karakter.');
+                await msg.react('❌');
+                return;
+            }
+
+            await msg.reply('⏳ Mengirim pengumuman ke semua user terdaftar...');
+
+            const result = await sendAnnouncement(announcement, null, `Admin (${sender})`);
+
+            if (result.success) {
+                await msg.reply(`✅ ${result.message}`);
+                await msg.react('✅');
+            } else {
+                await msg.reply(`❌ ${result.message}`);
+                await msg.react('❌');
+            }
+            return;
+        }
+
+        if (senderIsAdmin && contentLower === '#listusers') {
+            const userList = await listRegisteredUsers();
+            await msg.reply(userList);
+            await msg.react('✅');
+            return;
+        }
+
+        if (senderIsAdmin && contentLower === '#stats') {
+            try {
+                const currentAllowlist = await loadAllowlist();
+                const userCount = Object.keys(currentAllowlist).length;
+
+                let stats = `*Statistik Server*\n\n` +
+                    `Total user terdaftar: ${userCount}\n\n`;
+
+                await msg.reply(stats);
+                await msg.react('✅');
+            } catch (error) {
+                console.error('Error getting stats:', error);
+                await msg.reply('❌ Terjadi kesalahan saat mengambil statistik');
+                await msg.react('❌');
+            }
+            return;
+        }
+
+        // Display admin commands
+        if (senderIsAdmin && contentLower === '#bantuan') {
+            await msg.reply(adminPerintah);
+            await msg.react('✅');
+            return;
+        }
+
+        // Continue with normal user flow
         // Cek status unregister
         if (unregisterState.get(sender)) {
             if (contentLower === 'ya') {
@@ -336,7 +648,7 @@ client.on('message', async msg => {
 
         // Cek allowlist untuk perintah non-registrasi
         const apiEndpoint = getApiEndpoint(sender);
-        if (!apiEndpoint && contentLower !== '#bantuan' && contentLower !== '#register') {
+        if (!apiEndpoint && contentLower !== '#bantuan' && contentLower !== '#register' && !senderIsAdmin) {
             console.log(`Akses ditolak untuk nomor: ${sender}`);
             await msg.reply('❌ Maaf, Anda tidak memiliki akses ke layanan ini.\n\nGunakan #register untuk mendaftarkan server Anda atau #bantuan untuk melihat daftar perintah.');
             await msg.react('❌');
@@ -437,13 +749,84 @@ client.on('message', async msg => {
                 break;
 
             case '#bantuan':
-                await msg.reply(perintah);
+                if (senderIsAdmin) {
+                    await msg.reply(adminPerintah);
+                } else {
+                    await msg.reply(perintah);
+                }
                 await msg.react('✅');
+                break;
+
+            case 'menu':
+            case '#menu':
+                try {
+                    const isRegistered = !!getApiEndpoint(sender);
+
+                    // Buat template tombol
+                    const buttons = [
+                        {
+                            id: 'btn1',
+                            body: isRegistered ? '#cek' : '#register',
+                            text: isRegistered ? 'Cek Status' : 'Daftar Server'
+                        },
+                        {
+                            id: 'btn2',
+                            body: isRegistered ? '#link' : '#bantuan',
+                            text: isRegistered ? 'Dapatkan Link' : 'Bantuan'
+                        }
+                    ];
+
+                    if (isRegistered) {
+                        buttons.push(
+                            {
+                                id: 'btn3',
+                                body: '#web',
+                                text: 'Dashboard'
+                            },
+                            {
+                                id: 'btn4',
+                                body: '#reset',
+                                text: 'Reset'
+                            },
+                            {
+                                id: 'btn5',
+                                body: '#bantuan',
+                                text: 'Bantuan'
+                            }
+                        );
+                    }
+
+                    // Buat pesan dengan tombol
+                    const buttonMessage = new Buttons(
+                        isRegistered
+                            ? '*Menu Utama*\n\nPilih salah satu perintah di bawah ini:'
+                            : '*Menu Utama*\n\nAnda belum terdaftar. Silakan pilih salah satu perintah:',
+                        buttons,
+                        'Menu Bioauth',
+                        'Pilih perintah yang diinginkan'
+                    );
+
+                    await client.sendMessage(msg.from, buttonMessage);
+                    await msg.react('✅');
+                } catch (error) {
+                    console.error('Error sending menu buttons:', error);
+                    // Fallback ke text biasa jika tombol gagal
+                    let menuText = isRegistered
+                        ? "*Menu Terdaftar*\n\n#cek - Cek status\n#link - Dapatkan link\n#web - Dashboard\n#reset - Reset\n#bantuan - Bantuan"
+                        : "*Menu Default*\n\n#register - Daftar server\n#bantuan - Bantuan";
+
+                    await msg.reply(menuText);
+                    await msg.react('❌');
+                }
                 break;
 
             default:
                 if (contentLower.startsWith('#')) {
-                    await msg.reply(perintah);
+                    if (senderIsAdmin) {
+                        await msg.reply(adminPerintah);
+                    } else {
+                        await msg.reply(perintah);
+                    }
                     await msg.react('✅');
                 } else {
                     await msg.react(''); // Hapus reaksi loading jika bukan command
