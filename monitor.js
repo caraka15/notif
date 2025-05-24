@@ -4,583 +4,624 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
-const chalk = require('chalk'); // Add this dependency for colored logs
+const chalk = require('chalk');
 
-// Configuration paths
-const ROOT_DIR = '/root/notif';
+// Konfigurasi path
+const ROOT_DIR = '/root/notif'; // Pastikan path ini sesuai dengan lingkungan Anda
 const CONFIG_DIR = path.join(ROOT_DIR, 'config');
 const ALLOWLIST_PATH = path.join(CONFIG_DIR, 'allowlist.json');
-const LOG_DIR = '/root/logs';
+const LOG_DIR = path.join(ROOT_DIR, 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'monitor.log');
 const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth_monitor');
 
-// Bioauth check interval
-const BIOAUTH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// Interval pengecekan Bioauth
+const BIOAUTH_INTERVAL = 5 * 60 * 1000; // 5 menit
 
-// Bioauth checker lock
+// --- PENAMBAHAN KONSTANTA ADMIN WHATSAPP ---
+// PENTING: Ganti 'GANTI_DENGAN_NOMOR_ADMIN_628XXX' dengan nomor WhatsApp Admin yang valid (misalnya, '6281234567890')
+const ADMIN_WHATSAPP_NUMBER = '6285156371696';
+// --- AKHIR PENAMBAHAN KONSTANTA ADMIN WHATSAPP ---
+
+// Kunci untuk pengecekan Bioauth
 let isBioauthChecking = false;
+let BIOAUTH_INTERVAL_ID;
 
-// Enhanced logging function
+// Fungsi logging yang ditingkatkan
 async function logMessage(message, type = 'INFO') {
     const timestamp = new Date().toISOString();
     let coloredMessage;
-
-    // Color coding based on message type
     switch (type) {
-        case 'ERROR':
-            coloredMessage = chalk.red(`[${timestamp}] ❌ ERROR: ${message}`);
-            break;
-        case 'WARN':
-            coloredMessage = chalk.yellow(`[${timestamp}] ⚠️ WARN: ${message}`);
-            break;
-        case 'SUCCESS':
-            coloredMessage = chalk.green(`[${timestamp}] ✅ SUCCESS: ${message}`);
-            break;
-        case 'BIOAUTH':
-            coloredMessage = chalk.cyan(`[${timestamp}] 🔐 BIOAUTH: ${message}`);
-            break;
-        case 'BALANCE':
-            coloredMessage = chalk.magenta(`[${timestamp}] 💰 BALANCE: ${message}`);
-            break;
-        case 'WHATSAPP':
-            coloredMessage = chalk.green(`[${timestamp}] 📱 WHATSAPP: ${message}`);
-            break;
-        case 'SYSTEM':
-            coloredMessage = chalk.blue(`[${timestamp}] 🔄 SYSTEM: ${message}`);
-            break;
-        default:
-            coloredMessage = chalk.white(`[${timestamp}] ℹ️ INFO: ${message}`);
+        case 'ERROR': coloredMessage = chalk.red(`[${timestamp}] ❌ ERROR: ${message}`); break;
+        case 'WARN': coloredMessage = chalk.yellow(`[${timestamp}] ⚠️ PERINGATAN: ${message}`); break;
+        case 'SUCCESS': coloredMessage = chalk.green(`[${timestamp}] ✅ SUKSES: ${message}`); break;
+        case 'BIOAUTH': coloredMessage = chalk.cyan(`[${timestamp}] 🔐 BIOAUTH: ${message}`); break;
+        case 'BALANCE': coloredMessage = chalk.magenta(`[${timestamp}] 💰 SALDO: ${message}`); break;
+        case 'WHATSAPP': coloredMessage = chalk.blue(`[${timestamp}] 📱 WHATSAPP: ${message}`); break;
+        case 'SYSTEM': coloredMessage = chalk.gray(`[${timestamp}] 🔄 SISTEM: ${message}`); break;
+        default: coloredMessage = chalk.white(`[${timestamp}] ℹ️ INFO: ${message}`);
     }
-
-    // Log to console with formatting
     console.log(coloredMessage);
-
-    // Write to log file (without colors)
     const logEntry = `[${timestamp}] [${type}] ${message}\n`;
     try {
         await fs.appendFile(LOG_FILE, logEntry);
     } catch (error) {
-        console.error(chalk.red(`[${timestamp}] ❌ ERROR: Failed to write to log file: ${error.message}`));
+        console.error(chalk.red(`[${new Date().toISOString()}] ❌ ERROR: Gagal menulis ke file log: ${error.message}`));
     }
 }
 
-// WhatsApp client initialization
+// Inisialisasi client WhatsApp
 const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: AUTH_DIR,
-        clientId: 'monitor-bot'
-    }),
+    authStrategy: new LocalAuth({ dataPath: AUTH_DIR, clientId: 'monitor-bot' }),
     puppeteer: {
         headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-        ]
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--disable-gpu']
     }
 });
 
-// Load allowlist
+// Memuat allowlist
 async function loadAllowlist() {
     try {
-        await logMessage('Loading allowlist...', 'SYSTEM');
+        await logMessage('Memuat allowlist...', 'SYSTEM');
         const data = await fs.readFile(ALLOWLIST_PATH, 'utf8');
         const allowlist = JSON.parse(data);
-        await logMessage(`Loaded ${Object.keys(allowlist).length} servers from allowlist`, 'SUCCESS');
+        await logMessage(`Berhasil memuat ${Object.keys(allowlist).length} server dari allowlist`, 'SUCCESS');
         return allowlist;
     } catch (error) {
-        await logMessage(`Error loading allowlist: ${error.message}`, 'ERROR');
-        return {}; // Return empty object on error to prevent crashes
+        if (error.code === 'ENOENT') {
+            await logMessage(`File allowlist tidak ditemukan di ${ALLOWLIST_PATH}. Membuat file contoh.`, 'WARN');
+            const exampleAllowlist = {
+                "6281234567890": {
+                    "ip": "IP_SERVER_ANDA",
+                    "port": "PORT_API_HELPER_ANDA",
+                    "name": "NamaServerAnda1",
+                    "address": "AlamatHumanodeWalletAnda_Format_SS58",
+                    "status": "active",
+                    "managedAdmin": 0 // Default: tidak dikelola admin
+                }
+            };
+            await fs.writeFile(ALLOWLIST_PATH, JSON.stringify(exampleAllowlist, null, 2), 'utf8');
+            return exampleAllowlist;
+        }
+        await logMessage(`Error memuat allowlist: ${error.message}`, 'ERROR');
+        return {};
     }
 }
 
-// Function to update status in allowlist.json
+// Fungsi untuk memperbarui status di allowlist.json
 async function updateAllowlistStatus(phoneKey, newStatus) {
     try {
-        await logMessage(`Updating status to "${newStatus}" for server associated with ${phoneKey} in allowlist.json`, 'SYSTEM');
+        await logMessage(`Memperbarui status menjadi "${newStatus}" untuk server ${phoneKey} di allowlist.json`, 'SYSTEM');
         const currentAllowlistData = await fs.readFile(ALLOWLIST_PATH, 'utf8');
         const allowlist = JSON.parse(currentAllowlistData);
-
         if (allowlist[phoneKey]) {
-            allowlist[phoneKey].status = newStatus; // Add or update the status field
+            allowlist[phoneKey].status = newStatus;
             await fs.writeFile(ALLOWLIST_PATH, JSON.stringify(allowlist, null, 2), 'utf8');
-            await logMessage(`Successfully updated status for ${phoneKey} to "${newStatus}" in allowlist.json`, 'SUCCESS');
+            await logMessage(`Berhasil memperbarui status untuk ${phoneKey} menjadi "${newStatus}"`, 'SUCCESS');
         } else {
-            await logMessage(`Phone key ${phoneKey} not found in allowlist.json. Cannot update status.`, 'WARN');
+            await logMessage(`Kunci telepon ${phoneKey} tidak ditemukan di allowlist.json.`, 'WARN');
         }
     } catch (error) {
-        await logMessage(`Error updating allowlist status for ${phoneKey}: ${error.message}`, 'ERROR');
+        await logMessage(`Error memperbarui status allowlist untuk ${phoneKey}: ${error.message}`, 'ERROR');
     }
 }
 
-
-// Balance Monitor Class
+// Kelas Monitor Saldo Humanode
 class HumanodeBalanceMonitor {
     constructor() {
         this.wsEndpoint = 'wss://explorer-rpc-ws.mainnet.stages.humanode.io';
         this.api = null;
         this.lastBalances = new Map();
-        this.isMonitoring = false;
+        this.activeSubscriptions = new Map();
     }
 
     async connect() {
+        if (this.api && this.api.isConnected) {
+            await logMessage('Sudah terhubung ke Jaringan Humanode.', 'BALANCE');
+            return true;
+        }
         try {
+            await logMessage('Menghubungkan ke Jaringan Humanode...', 'BALANCE');
             const provider = new WsProvider(this.wsEndpoint);
-            this.api = await ApiPromise.create({
-                provider,
-                ss58Format: 5234 // Humanode SS58 prefix
+            provider.on('connected', () => logMessage('Provider WS Humanode terhubung.', 'SYSTEM'));
+            provider.on('disconnected', async () => {
+                await logMessage('Provider WS Humanode terputus. Objek API akan dibersihkan.', 'WARN');
+                if (this.api) this.api = null;
             });
-
-            await logMessage('Connected to Humanode Network', 'BALANCE');
+            provider.on('error', (err) => logMessage(`Error Provider WS Humanode: ${err.message}`, 'ERROR'));
+            this.api = await ApiPromise.create({ provider, ss58Format: 5234 });
+            await this.api.isReady;
+            await logMessage('Berhasil terhubung ke Jaringan Humanode.', 'SUCCESS');
             return true;
         } catch (error) {
-            await logMessage(`Connection error: ${error.message}`, 'ERROR');
-            throw error;
+            await logMessage(`Error koneksi API Humanode: ${error.message}`, 'ERROR');
+            this.api = null;
+            return false;
         }
     }
 
     async getBalance(address) {
         try {
-            if (!this.api) {
-                await this.connect();
+            if (!this.api || !this.api.isConnected) {
+                if (!await this.connect()) throw new Error("Gagal terhubung ke API Humanode untuk getBalance.");
             }
-
             const { data: balance } = await this.api.query.system.account(address);
             const free = this.api.createType('Balance', balance.free);
-
-            return {
-                free: free.toString(),
-                timestamp: new Date().toISOString()
-            };
+            return { free: free.toString(), timestamp: new Date().toISOString() };
         } catch (error) {
-            await logMessage(`Error checking balance: ${error.message}`, 'ERROR');
+            await logMessage(`Error memeriksa saldo untuk ${address}: ${error.message}`, 'ERROR');
             throw error;
         }
     }
 
     formatBalance(rawBalance) {
-        // Humanode uses 18 decimal places
         const actualBalance = Number(BigInt(rawBalance)) / Number(BigInt(1_000_000_000_000_000_000));
-        return actualBalance.toFixed(2).replace('.', ','); // Format with 2 decimal places and comma as separator
+        return actualBalance.toFixed(2).replace('.', ',');
     }
 
-    async startMonitoring(phone, serverConfig) {
-        try {
-            if (!serverConfig.address || serverConfig.address === 'Tidak diset') {
-                await logMessage(`Skip monitoring for ${serverConfig.name}: No address configured`, 'BALANCE');
-                return;
-            }
-
-            if (!this.api) {
-                await this.connect();
-            }
-
-            await logMessage(`Monitoring address for ${serverConfig.name}`, 'BALANCE');
-
-            const initialBalance = await this.getBalance(serverConfig.address);
-            this.lastBalances.set(serverConfig.address, initialBalance.free);
-
-            // Monitor events in real-time
-            await this.api.query.system.account(serverConfig.address, async (accountInfo) => {
-                const currentBalance = accountInfo.data.free.toString();
-                const lastBalance = this.lastBalances.get(serverConfig.address);
-
-                if (lastBalance && BigInt(currentBalance) > BigInt(lastBalance)) {
-                    const difference = BigInt(currentBalance) - BigInt(lastBalance);
-                    const formattedAmount = this.formatBalance(difference.toString());
-
-                    const message = `💰 *Balance Update*\n\n` +
-                        `*Server:* ${serverConfig.name}\n` +
-                        `*Address:* ${serverConfig.address}\n` +
-                        `*Saldo Masuk:* ${formattedAmount} HMND`;
-
-                    await sendWhatsAppMessage(phone, message);
-                    await logMessage(`${serverConfig.name} received +${formattedAmount} HMND`, 'BALANCE');
+    async stopMonitoringAddress(address) {
+        if (this.activeSubscriptions.has(address)) {
+            const unsubscribe = this.activeSubscriptions.get(address);
+            if (typeof unsubscribe === 'function') {
+                try {
+                    unsubscribe();
+                    await logMessage(`Berhasil berhenti berlangganan pembaruan saldo untuk: ${address}`, 'BALANCE');
+                } catch (e) {
+                    await logMessage(`Error saat berhenti berlangganan untuk ${address}: ${e.message}`, 'ERROR');
                 }
-
-                this.lastBalances.set(serverConfig.address, currentBalance);
-            });
-
-        } catch (error) {
-            await logMessage(`Error monitoring ${serverConfig.name}: ${error.message}`, 'ERROR');
-            throw error;
+            }
+            this.activeSubscriptions.delete(address);
+            this.lastBalances.delete(address);
         }
     }
 
+    async stopAllMonitoring() {
+        await logMessage('Menghentikan semua langganan pemantauan saldo aktif...', 'BALANCE');
+        const addressesToStop = Array.from(this.activeSubscriptions.keys());
+        for (const address of addressesToStop) await this.stopMonitoringAddress(address);
+        if (addressesToStop.length > 0) await logMessage('Semua langganan saldo dihentikan.', 'SUCCESS');
+        else await logMessage('Tidak ada langganan saldo aktif untuk dihentikan.', 'INFO');
+    }
+
+    // --- FUNGSI startMonitoring DIMODIFIKASI DI SINI ---
+    async startMonitoring(phone, serverConfig) {
+        try {
+            if (!serverConfig.address || serverConfig.address === 'Tidak diset' || serverConfig.address.trim() === '') {
+                await logMessage(`Lewati pemantauan saldo ${serverConfig.name}: Alamat tidak valid.`, 'BALANCE');
+                return;
+            }
+            if (!this.api || !this.api.isConnected) {
+                if (!await this.connect()) {
+                    await logMessage(`Tidak dapat memulai pemantauan ${serverConfig.name}: Koneksi API Humanode gagal.`, 'ERROR');
+                    return;
+                }
+            }
+            if (this.activeSubscriptions.has(serverConfig.address)) {
+                await logMessage(`Menghentikan monitor saldo lama untuk ${serverConfig.name} (${serverConfig.address}) sebelum memulai ulang.`, 'BALANCE');
+                await this.stopMonitoringAddress(serverConfig.address);
+            }
+            await logMessage(`Memulai pemantauan saldo ${serverConfig.name}: ${serverConfig.address}`, 'BALANCE');
+            const initialBalanceData = await this.getBalance(serverConfig.address);
+            this.lastBalances.set(serverConfig.address, initialBalanceData.free);
+            await logMessage(`Saldo awal ${serverConfig.name} (${serverConfig.address}): ${this.formatBalance(initialBalanceData.free)} HMND`, 'BALANCE');
+
+            const unsubscribe = await this.api.query.system.account(serverConfig.address, async (accountInfo) => {
+                const currentBalance = accountInfo.data.free.toString();
+                const lastBalance = this.lastBalances.get(serverConfig.address);
+                if (typeof lastBalance !== 'undefined' && BigInt(currentBalance) > BigInt(lastBalance)) {
+                    const difference = BigInt(currentBalance) - BigInt(lastBalance);
+                    if (difference > BigInt(0)) {
+                        const formattedAmount = this.formatBalance(difference.toString());
+                        const message = `💰 *Pembaruan Saldo*\n\n*Server:* ${serverConfig.name}\n*Alamat:* ${serverConfig.address}\n*Saldo Masuk:* ${formattedAmount} HMND`;
+
+                        // Logika untuk menentukan penerima notifikasi
+                        let targetRecipient = phone; // Default ke nomor pengguna
+                        const isAdminManaged = serverConfig.managedAdmin === 1;
+
+                        if (isAdminManaged) {
+                            if (ADMIN_WHATSAPP_NUMBER &&
+                                ADMIN_WHATSAPP_NUMBER !== 'GANTI_DENGAN_NOMOR_ADMIN_628XXX' && // Pastikan bukan placeholder
+                                /^\d+$/.test(ADMIN_WHATSAPP_NUMBER.replace(/@c\.us$/, ''))) { // Cek apakah nomor valid (hanya digit, abaikan @c.us jika ada)
+                                targetRecipient = ADMIN_WHATSAPP_NUMBER;
+                                await logMessage(`Server ${serverConfig.name} (${serverConfig.address}) dikelola admin. Notifikasi saldo akan dikirim ke Admin (${ADMIN_WHATSAPP_NUMBER}).`, 'BALANCE');
+                            } else {
+                                await logMessage(`Server ${serverConfig.name} (${serverConfig.address}) dikelola admin, TAPI ADMIN_WHATSAPP_NUMBER ('${ADMIN_WHATSAPP_NUMBER}') tidak valid atau tidak dikonfigurasi. Notifikasi saldo akan dikirim ke user (${phone}).`, 'WARN');
+                                // targetRecipient tetap 'phone' (nomor user)
+                            }
+                        }
+                        // Akhir logika penentuan penerima
+
+                        await sendWhatsAppMessage(targetRecipient, message);
+                        await logMessage(`${serverConfig.name} (${serverConfig.address}) +${formattedAmount} HMND. Saldo baru: ${this.formatBalance(currentBalance)} HMND. Notifikasi terkirim ke ${targetRecipient.replace('@c.us', '')}`, 'BALANCE');
+                    }
+                }
+                this.lastBalances.set(serverConfig.address, currentBalance);
+            });
+            this.activeSubscriptions.set(serverConfig.address, unsubscribe);
+            await logMessage(`Berhasil memulai pemantauan saldo ${serverConfig.name} (${serverConfig.address})`, 'SUCCESS');
+        } catch (error) {
+            await logMessage(`Error memulai pemantauan saldo ${serverConfig.name} (${serverConfig.address}): ${error.message}`, 'ERROR');
+        }
+    }
+    // --- AKHIR MODIFIKASI FUNGSI startMonitoring ---
+
     async disconnect() {
-        if (this.api) {
-            this.isMonitoring = false; // This flag might need better management if multiple monitors are stopped individually
-            await this.api.disconnect();
-            await logMessage('Monitoring stopped', 'BALANCE');
+        await logMessage('Memutus koneksi HumanodeBalanceMonitor...', 'BALANCE');
+        await this.stopAllMonitoring();
+        if (this.api && this.api.isConnected) {
+            try {
+                await this.api.disconnect();
+                await logMessage('API Humanode berhasil diputus.', 'SUCCESS');
+            } catch (e) {
+                await logMessage(`Error memutus API Humanode: ${e.message}`, 'ERROR');
+            }
+        } else {
+            await logMessage('API Humanode sudah terputus atau belum diinisialisasi.', 'INFO');
+        }
+        this.api = null;
+    }
+}
+const balanceMonitor = new HumanodeBalanceMonitor();
+
+// Fungsi pembantu untuk menangani berbagai kondisi masalah server
+async function handleServerProblem(phone, serverConfig, problemType, details = {}) {
+    const initialAllowlistStatus = serverConfig.status || "active";
+    let message = "";
+    let logDetail = "";
+    const problemTypesForCriticalRepeatedNotification = ["BioauthInactive", "ServerDown"];
+
+    // Tambahan info pengelolaan untuk notifikasi
+    const isManagedByAdmin = serverConfig.managedAdmin === 1;
+    let managementInfoText = "";
+    if (isManagedByAdmin) {
+        managementInfoText = `\n*(Info: Server ini tercatat dikelola oleh Admin)*`;
+    }
+
+    switch (problemType) {
+        case "BioauthInactive":
+            message = `⛔ *${serverConfig.name}* tidak aktif (Bioauth)!\n\n` +
+                `IP: ${serverConfig.ip}\n` +
+                `Status: Tidak Aktif (Bioauth)${managementInfoText}\n\n` +
+                (details.authUrl ? `Link Re-autentikasi:\n${details.authUrl}` : 'Link autentikasi tidak tersedia.');
+            logDetail = `${serverConfig.name} TIDAK AKTIF (Bioauth)`;
+            break;
+        case "ServerDown":
+            message = `🔴 *${serverConfig.name}* tidak merespons (API Helper melaporkan ServerDown)!\n\n` +
+                `IP: ${serverConfig.ip}\n` +
+                `Status: Server Down (pada API Helper ${serverConfig.port})${managementInfoText}\n\n` +
+                `Layanan helper API untuk Bioauth mungkin mati. Mohon cek server atau restart layanan helper.`;
+            logDetail = `${serverConfig.name} TIDAK DAPAT DIVERIFIKASI (API Helper ServerDown)`;
+            break;
+        case "InvalidResponse":
+            message = `⚠️ *${serverConfig.name}* mengembalikan respons tidak valid dari API Helper!\n\n` +
+                `IP: ${serverConfig.ip}\n` +
+                `Status: Respons Tidak Valid (dari API Helper ${serverConfig.port})${managementInfoText}\n` +
+                (details.note ? `Catatan: ${details.note}\n` : '') +
+                `Mohon cek server atau lakukan reset pada layanan helper API.`;
+            logDetail = `${serverConfig.name} TIDAK DAPAT DIVERIFIKASI (API Helper InvalidResponse ${details.note || ''})`;
+            break;
+        case "ConnectionError":
+            message = `🔌 *${serverConfig.name}* tidak dapat dihubungi (layanan API helper di port ${serverConfig.port})!\n\n` +
+                `IP: ${serverConfig.ip}\n` +
+                `Error: ${details.errorCode} (${details.errorMessage || ''})${managementInfoText}\n\n` +
+                `Mohon periksa apakah layanan API helper untuk server ini berjalan. Status Bioauth tidak dapat diverifikasi.`;
+            logDetail = `${serverConfig.name} TIDAK DAPAT DIVERIFIKASI (Koneksi ke API Helper ${serverConfig.port} gagal: ${details.errorCode})`;
+            break;
+        default:
+            await logMessage(`Tipe masalah tidak dikenal: ${problemType} untuk ${serverConfig.name}`, 'ERROR');
+            return;
+    }
+
+    const isCriticalProblemType = problemTypesForCriticalRepeatedNotification.includes(problemType);
+
+    // Untuk notifikasi masalah server, kita tetap kirim ke user yang bersangkutan (phone dari allowlist)
+    // karena ini berkaitan langsung dengan server milik user tersebut, meskipun dikelola admin.
+    // Admin akan mendapat notifikasi saldo, user mendapat notifikasi masalah servernya.
+    // Jika ingin notifikasi masalah juga ke admin, logika pengiriman perlu disesuaikan di sini.
+
+    if (isCriticalProblemType) {
+        await sendWhatsAppMessage(phone, message);
+        if (initialAllowlistStatus !== "inactive") {
+            await logMessage(`${logDetail} - Notifikasi KRITIS (menyebabkan status jadi inactive) terkirim ke ${phone.replace('@c.us', '')}. Memperbarui allowlist.`, 'BIOAUTH');
+            await updateAllowlistStatus(phone, "inactive");
+        } else {
+            await logMessage(`${logDetail} - Notifikasi KRITIS BERULANG terkirim ke ${phone.replace('@c.us', '')}. Status allowlist sudah "inactive".`, 'BIOAUTH');
+        }
+    } else {
+        if (initialAllowlistStatus !== "inactive") {
+            await sendWhatsAppMessage(phone, message);
+            await logMessage(`${logDetail} - Notifikasi PERUBAHAN STATUS (karena error helper) terkirim ke ${phone.replace('@c.us', '')}. Memperbarui allowlist.`, 'BIOAUTH');
+            await updateAllowlistStatus(phone, "inactive");
+        } else {
+            await logMessage(`${logDetail}, dan status di allowlist sudah "inactive". Tidak ada notifikasi berulang untuk error helper ini ke ${phone.replace('@c.us', '')}.`, 'BIOAUTH');
         }
     }
 }
 
-// Bioauth Checker Function
-async function checkBioauth(phone, serverConfig) {
-    try {
-        // Determine initial status from allowlist (default to "active" if not present)
-        const initialAllowlistStatus = serverConfig.status || "active";
-        await logMessage(`Checking Bioauth for ${serverConfig.name} (${serverConfig.ip}). Initial allowlist status: ${initialAllowlistStatus}`, 'BIOAUTH');
 
+// Fungsi Pengecek Bioauth
+async function checkBioauth(phone, serverConfig) {
+    const initialAllowlistStatus = serverConfig.status || "active";
+    const managementStatus = serverConfig.managedAdmin === 1 ? "Dikelola Admin" : "Dikelola User";
+    await logMessage(`Memeriksa Bioauth untuk ${serverConfig.name} (${serverConfig.ip}). Pengelolaan: ${managementStatus}. Status allowlist saat ini: ${initialAllowlistStatus}`, 'BIOAUTH');
+
+    try {
         const response = await axios.get(`http://${serverConfig.ip}:${serverConfig.port}/cek`, {
-            timeout: 10000 // 10 seconds timeout
+            timeout: 10000 // Timeout 10 detik
         });
         const data = response.data;
 
-        // 1. Basic validation of API response structure
-        if (!data || !data.status || !data.status.result) {
-            await logMessage(`Invalid API response structure from ${serverConfig.name}. Response: ${JSON.stringify(data)}`, 'BIOAUTH');
-            // No notification here, as it's an unexpected API format. Log is important.
+        if (!data || !data.status || typeof data.status.result === 'undefined') {
+            await logMessage(`Struktur respons API tidak valid dari ${serverConfig.name}. Respons: ${JSON.stringify(data)}`, 'WARN');
+            await handleServerProblem(phone, serverConfig, "InvalidResponse", { responseData: JSON.stringify(data), note: "Struktur API tidak sesuai." });
             return;
         }
 
-        // 2. Handle definitive "ServerDown" status from API
-        // This means the API endpoint itself reported the bioauth service is down.
-        if (data.status.result === "ServerDown") {
-            const message = `🔴 *${serverConfig.name}* tidak merespons (API melaporkan ServerDown)!\n\n` +
-                `IP: ${serverConfig.ip}\n` +
-                `Status: Server Down\n\n` +
-                `Layanan Bioauth mungkin mati. Mohon cek server atau restart layanan.`;
-            await sendWhatsAppMessage(phone, message);
-            await logMessage(`${serverConfig.name} is DOWN (API reported) - notification sent`, 'BIOAUTH');
-            // No status change in allowlist for ServerDown, as it's a service issue, not bioauth session state.
+        const apiStatusResult = data.status.result;
+
+        if (apiStatusResult === "Inactive") {
+            await handleServerProblem(phone, serverConfig, "BioauthInactive", { authUrl: data.auth?.url });
             return;
         }
 
-        // 3. Handle definitive "InvalidResponse" status from API
-        // This means the API endpoint reported the bioauth service gave an invalid response.
-        if (data.status.result === "InvalidResponse") {
-            const message = `⚠️ *${serverConfig.name}* mengembalikan respons yang tidak valid (API melaporkan InvalidResponse)!\n\n` +
-                `IP: ${serverConfig.ip}\n` +
-                `Status: Invalid Response\n\n` +
-                `Mohon cek server atau lakukan reset.`;
-            await sendWhatsAppMessage(phone, message);
-            await logMessage(`${serverConfig.name} returned invalid response (API reported) - notification sent`, 'BIOAUTH');
-            // No status change in allowlist for InvalidResponse.
+        if (apiStatusResult === "ServerDown") {
+            await handleServerProblem(phone, serverConfig, "ServerDown");
             return;
         }
 
-        // 4. Handle "Inactive" status from API (Bioauth session is inactive)
-        if (data.status.result === "Inactive") {
-            const message = `⛔ *${serverConfig.name}* tidak aktif (Bioauth)!\n\n` +
-                `IP: ${serverConfig.ip}\n` +
-                `Status: Inactive\n\n` +
-                (data.auth && data.auth.url ? `Link Re-authentication:\n${data.auth.url}` : 'Link otentikasi tidak tersedia.');
-            await sendWhatsAppMessage(phone, message); // Send notification regardless of previous state
-            await logMessage(`${serverConfig.name} is INACTIVE (Bioauth) - notification sent`, 'BIOAUTH');
-
-            if (initialAllowlistStatus === "active") {
-                // Transition: Active (in allowlist) -> Inactive (from API)
-                await logMessage(`${serverConfig.name} was 'active' in allowlist, API reports 'Inactive'. Updating allowlist to 'inactive'.`, 'BIOAUTH');
-                await updateAllowlistStatus(phone, "inactive");
-            } else {
-                // Already Inactive in allowlist, and API confirms Inactive
-                await logMessage(`${serverConfig.name} was already 'inactive' in allowlist and API confirms. No allowlist status change needed.`, 'BIOAUTH');
-            }
-            return; // Exit after handling Inactive status
+        if (apiStatusResult === "InvalidResponse") {
+            await handleServerProblem(phone, serverConfig, "InvalidResponse", { responseData: JSON.stringify(data), note: "API melaporkan InvalidResponse." });
+            return;
         }
 
-        // 5. Handle "Active" status from API (Bioauth session is active)
-        if (typeof data.status.result === 'object' && data.status.result.Active) {
-            // API reports the node is Active
-            if (initialAllowlistStatus === "inactive") {
-                // Transition: Inactive (in allowlist) -> Active (from API)
-                const message = `✅ *${serverConfig.name}* kembali AKTIF!\n\n` +
-                    `IP: ${serverConfig.ip}`;
-                await sendWhatsAppMessage(phone, message);
-                await logMessage(`${serverConfig.name} has transitioned from INACTIVE to ACTIVE. Notification sent. Updating allowlist.`, 'BIOAUTH');
+        if (typeof apiStatusResult === 'object' && apiStatusResult.Active) {
+            const isManagedByAdmin = serverConfig.managedAdmin === 1;
+            let managementInfoText = isManagedByAdmin ? "\n*(Info: Server ini tercatat dikelola oleh Admin)*" : "";
+
+            if (initialAllowlistStatus !== "active") {
+                const message = `✅ *${serverConfig.name}* kembali AKTIF!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                await sendWhatsAppMessage(phone, message); // Notifikasi kembali aktif tetap ke user
+                await logMessage(`${serverConfig.name} telah beralih ke AKTIF. Notifikasi terkirim ke ${phone.replace('@c.us', '')}. Memperbarui allowlist.`, 'BIOAUTH');
                 await updateAllowlistStatus(phone, "active");
             } else {
-                // State: Active (in allowlist) -> Active (from API) or New/Undefined (in allowlist) -> Active (from API)
-                if (initialAllowlistStatus !== "active") {
-                    await logMessage(`${serverConfig.name} is ACTIVE (API). Initial allowlist status was '${initialAllowlistStatus}'. Updating allowlist to 'active'.`, 'BIOAUTH');
-                    await updateAllowlistStatus(phone, "active"); // Ensure allowlist is marked active
-                } else {
-                    await logMessage(`${serverConfig.name} is confirmed ACTIVE. Proceeding with expiration checks.`, 'BIOAUTH');
-                }
+                await logMessage(`${serverConfig.name} dikonfirmasi AKTIF. Melanjutkan pemeriksaan kedaluwarsa.`, 'BIOAUTH');
             }
 
-            // Proceed with expiration warnings for active nodes
-            const expiresAt = data.status.result.Active.expires_at;
-            const now = Date.now();
-            const remainingMilliseconds = expiresAt - now;
-
+            const expiresAt = apiStatusResult.Active.expires_at;
+            // const now = Date.now(); // Tidak digunakan secara langsung, digantikan oleh remaining_time dari API
+            // const remainingMilliseconds = expiresAt - now; // Tidak digunakan secara langsung
             let formattedRemainingTime = "N/A";
+            let remainingMillisecondsFromAPI = 0; // Untuk logika peringatan
+
+            if (data.status.remaining_time && typeof data.status.remaining_time.total_milliseconds === 'number') {
+                remainingMillisecondsFromAPI = data.status.remaining_time.total_milliseconds;
+            }
+
+
             if (data.status.remaining_time && typeof data.status.remaining_time.hours === 'number' && typeof data.status.remaining_time.minutes === 'number') {
                 const totalHours = data.status.remaining_time.hours;
                 const minutes = data.status.remaining_time.minutes;
                 const days = Math.floor(totalHours / 24);
                 const remainingHoursInDay = totalHours % 24;
-
                 let parts = [];
                 if (days > 0) parts.push(`${days} hari`);
-                if (remainingHoursInDay > 0 || days > 0) parts.push(`${remainingHoursInDay} jam`);
-                parts.push(`${minutes} menit`);
-                formattedRemainingTime = parts.join(' ');
+                if (remainingHoursInDay > 0 || (days === 0 && parts.length === 0 && minutes > 0)) parts.push(`${remainingHoursInDay} jam`); // Tampilkan jam jika ada atau jika hanya menit
+                if (minutes > 0 || (days === 0 && remainingHoursInDay === 0 && parts.length === 0)) parts.push(`${minutes} menit`); // Tampilkan menit jika ada atau jika satu-satunya
+                formattedRemainingTime = parts.length > 0 ? parts.join(' ') : "Kurang dari semenit";
             }
 
-            const thirtyMinuteWarningThreshold = 30;
-            const fiveMinuteWarningThreshold = 5;
-            const remainingMinutes = Math.floor(remainingMilliseconds / (1000 * 60));
 
-            // Only send expiration warnings if it was already known to be active to avoid notification spam on "kembali aktif"
-            if (initialAllowlistStatus === "active") {
-                if (remainingMinutes > (thirtyMinuteWarningThreshold - 5) && remainingMinutes <= thirtyMinuteWarningThreshold) {
-                    const message = `🟡 *${serverConfig.name}* akan expired dalam ~30 menit!\n\n` +
-                        `IP: ${serverConfig.ip}\n` +
-                        `Sisa waktu: ${formattedRemainingTime}\n\n` +
-                        (data.auth && data.auth.url ? `Link Re-authentication:\n${data.auth.url}` : 'Link otentikasi tidak tersedia.');
-                    await sendWhatsAppMessage(phone, message);
-                    await logMessage(`${serverConfig.name} expires in ~30 minutes - warning sent`, 'BIOAUTH');
-                } else if (remainingMinutes > 0 && remainingMinutes <= fiveMinuteWarningThreshold) {
-                    const message = `🔴 *${serverConfig.name}* akan expired dalam ~5 menit!\n\n` +
-                        `IP: ${serverConfig.ip}\n` +
-                        `Sisa waktu: ${formattedRemainingTime}\n\n` +
-                        (data.auth && data.auth.url ? `Link Re-authentication:\n${data.auth.url}` : 'Link otentikasi tidak tersedia.');
-                    await sendWhatsAppMessage(phone, message);
-                    await logMessage(`${serverConfig.name} expires in ~5 minutes - URGENT warning sent`, 'BIOAUTH');
+            if (initialAllowlistStatus === "active") { // Hanya kirim peringatan kedaluwarsa jika status saat ini aktif
+                const thirtyMinuteWarningThreshold = 30 * 60 * 1000;
+                const twentyFiveMinuteWarningThreshold = 25 * 60 * 1000;
+                const fiveMinuteWarningThreshold = 5 * 60 * 1000;
+
+                // Kondisi untuk peringatan 25-30 menit
+                if (remainingMillisecondsFromAPI > twentyFiveMinuteWarningThreshold && remainingMillisecondsFromAPI <= thirtyMinuteWarningThreshold) {
+                    const message = `🟡 *${serverConfig.name}* akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}\n`
+                    // + (data.auth && data.auth.url ? `Link Re-autentikasi:\n${data.auth.url}` : 'Link autentikasi tidak tersedia.');
+                    await sendWhatsAppMessage(phone, message); // Notifikasi kedaluwarsa tetap ke user
+                    await logMessage(`${serverConfig.name} kedaluwarsa dalam ~${formattedRemainingTime} (rentang 25-30 menit) - peringatan terkirim ke ${phone.replace('@c.us', '')}`, 'BIOAUTH');
+                }
+                // Kondisi untuk peringatan di bawah 5 menit
+                else if (remainingMillisecondsFromAPI > 0 && remainingMillisecondsFromAPI <= fiveMinuteWarningThreshold) {
+                    const message = `🔴 *${serverConfig.name}* akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}\n`
+                    // + (data.auth && data.auth.url ? `Link Re-autentikasi:\n${data.auth.url}` : 'Link autentikasi tidak tersedia.');
+                    await sendWhatsAppMessage(phone, message); // Notifikasi kedaluwarsa tetap ke user
+                    await logMessage(`${serverConfig.name} kedaluwarsa dalam ~${formattedRemainingTime} (rentang <5 menit) - peringatan DARURAT terkirim ke ${phone.replace('@c.us', '')}`, 'BIOAUTH');
                 }
             }
-            return; // Exit after handling Active status
-        }
-
-        // Fallback for any other unhandled data.status.result values
-        await logMessage(`Unhandled API response status for ${serverConfig.name}: ${JSON.stringify(data.status.result)}. Data: ${JSON.stringify(data)}`, 'WARN');
-
-    } catch (error) {
-        // Handle network/connection errors when trying to reach the server's /cek endpoint
-        if (error.isAxiosError && (!error.response || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN')) {
-            await logMessage(`Connection error for ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): ${error.message}. Server endpoint might be down or unreachable.`, 'ERROR');
-            // Optionally, send a generic "server unreachable" notification if desired,
-            // as this is different from the API reporting "ServerDown".
-            // Example:
-            // const unreachableMessage = `🔌 *${serverConfig.name}* tidak dapat dihubungi!\n\n` +
-            //                          `IP: ${serverConfig.ip}:${serverConfig.port}\n` +
-            //                          `Error: ${error.message}\n\n` +
-            //                          `Mohon periksa apakah server dan layanan API helper berjalan.`;
-            // await sendWhatsAppMessage(phone, unreachableMessage);
-            // await logMessage(`${serverConfig.name} is UNREACHABLE - notification sent`, 'BIOAUTH');
-        } else {
-            // Other unexpected errors during checkBioauth
-            await logMessage(`Unexpected error in checkBioauth for ${serverConfig.name}: ${error.message} (Stack: ${error.stack})`, 'ERROR');
-        }
-    }
-}
-
-// WhatsApp message sending function
-async function sendWhatsAppMessage(phone, message) {
-    try {
-        await logMessage(`Sending message to ${phone}`, 'WHATSAPP');
-        const chatId = `${phone}@c.us`; // Standard format for WhatsApp user IDs
-        await client.sendMessage(chatId, message);
-        await logMessage(`Message sent to ${phone}`, 'SUCCESS');
-    } catch (error) {
-        await logMessage(`Failed to send message to ${phone}: ${error.message}`, 'ERROR');
-    }
-}
-
-// Bioauth checker runner
-async function startBioauthChecker() {
-    if (isBioauthChecking) {
-        await logMessage('Skip: check already in progress', 'BIOAUTH');
-        return;
-    }
-
-    try {
-        isBioauthChecking = true;
-        await logMessage('Starting check cycle...', 'BIOAUTH');
-        const allowlist = await loadAllowlist(); // Load the latest allowlist
-
-        if (Object.keys(allowlist).length === 0) {
-            await logMessage('Allowlist is empty. No servers to check.', 'WARN');
-            isBioauthChecking = false; // Release lock
             return;
         }
 
-        for (const [phone, serverConfig] of Object.entries(allowlist)) {
-            // Validate serverConfig to prevent errors
-            if (!serverConfig || !serverConfig.ip || !serverConfig.port || !serverConfig.name) {
-                await logMessage(`Skipping invalid server configuration for phone ${phone}: ${JSON.stringify(serverConfig)}`, 'WARN');
-                continue;
-            }
-            await checkBioauth(phone, serverConfig); // Pass the serverConfig which includes its current status
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1-second delay between checks
-        }
+        await logMessage(`Status respons API tidak tertangani untuk ${serverConfig.name}: ${JSON.stringify(apiStatusResult)}. Data: ${JSON.stringify(data)}`, 'WARN');
+        await handleServerProblem(phone, serverConfig, "InvalidResponse", { responseData: JSON.stringify(data), note: "Status API tidak dikenal." });
+
     } catch (error) {
-        await logMessage(`Checker error: ${error.message}`, 'ERROR');
-    } finally {
-        isBioauthChecking = false;
-        await logMessage('Check cycle completed', 'BIOAUTH');
+        if (error.isAxiosError && !error.response && error.code) {
+            await logMessage(`Error koneksi ke helper API untuk ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): ${error.code} - ${error.message}.`, 'ERROR');
+            await handleServerProblem(phone, serverConfig, "ConnectionError", { errorCode: error.code, errorMessage: error.message });
+        } else if (error.isAxiosError && error.response) {
+            await logMessage(`Error HTTP dari API helper ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): Status ${error.response.status}. Pesan: ${error.message}. Respons: ${JSON.stringify(error.response.data)}`, 'ERROR');
+            // Tetap panggil handleServerProblem agar status allowlist bisa diupdate jika perlu
+            await handleServerProblem(phone, serverConfig, "ConnectionError", { errorCode: `HTTP ${error.response.status}`, errorMessage: error.message });
+        } else {
+            await logMessage(`Error tak terduga di checkBioauth untuk ${serverConfig.name}: ${error.message} (Stack: ${error.stack || 'N/A'})`, 'ERROR');
+        }
     }
 }
 
-// Initialize balance monitor
-const balanceMonitor = new HumanodeBalanceMonitor();
+// Fungsi pengiriman pesan WhatsApp
+async function sendWhatsAppMessage(phone, message) {
+    try {
+        const chatId = phone.endsWith('@c.us') ? phone : `${phone}@c.us`;
+        await logMessage(`Mencoba mengirim pesan WhatsApp ke ${chatId.replace('@c.us', '')}`, 'WHATSAPP');
+        if (client.info) {
+            await client.sendMessage(chatId, message);
+            await logMessage(`Pesan berhasil terkirim ke ${chatId.replace('@c.us', '')}`, 'SUCCESS');
+        } else {
+            await logMessage(`Client WhatsApp belum siap. Pesan ke ${chatId.replace('@c.us', '')} tidak terkirim.`, 'WARN');
+        }
+    } catch (error) {
+        await logMessage(`Gagal mengirim pesan WhatsApp ke ${phone.replace('@c.us', '')}: ${error.message}`, 'ERROR');
+    }
+}
 
-// Ensure necessary directories exist
+// Runner pengecek Bioauth
+async function startBioauthChecker() {
+    if (isBioauthChecking) {
+        await logMessage('Pengecekan Bioauth sudah berjalan. Melewati siklus ini.', 'BIOAUTH');
+        return;
+    }
+    isBioauthChecking = true;
+    await logMessage('Memulai siklus pengecekan Bioauth...', 'BIOAUTH');
+    try {
+        const allowlist = await loadAllowlist();
+        if (Object.keys(allowlist).length === 0) {
+            await logMessage('Allowlist kosong. Tidak ada server untuk diperiksa.', 'WARN');
+            isBioauthChecking = false;
+            return;
+        }
+        for (const [phone, serverConfig] of Object.entries(allowlist)) {
+            if (!serverConfig || !serverConfig.ip || !serverConfig.port || !serverConfig.name) {
+                await logMessage(`Melewati konfigurasi server tidak valid untuk ${phone}: ${JSON.stringify(serverConfig)}`, 'WARN');
+                continue;
+            }
+            await checkBioauth(phone, serverConfig);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Jeda antar server
+        }
+    } catch (error) {
+        await logMessage(`Error selama siklus pengecekan bioauth: ${error.message}`, 'ERROR');
+    } finally {
+        isBioauthChecking = false;
+        await logMessage('Siklus pengecekan Bioauth selesai.', 'BIOAUTH');
+    }
+}
+
+// Pastikan direktori yang diperlukan ada
 async function ensureDirectories() {
     try {
         await fs.mkdir(CONFIG_DIR, { recursive: true });
         await fs.mkdir(LOG_DIR, { recursive: true });
-        await fs.mkdir(AUTH_DIR, { recursive: true }); // For WhatsApp session data
-        await logMessage('Required directories ensured.', 'SYSTEM');
-
-        // Create an empty allowlist if it doesn't exist, with a default structure example
+        await fs.mkdir(AUTH_DIR, { recursive: true });
+        await logMessage('Direktori yang diperlukan telah dipastikan.', 'SYSTEM');
         try {
             await fs.access(ALLOWLIST_PATH);
         } catch (e) {
-            // Example structure for a new allowlist.json
-            const exampleAllowlist = {
-                /*
-                  "628xxxxxxxxxx": {
-                      "ip": "YOUR_SERVER_IP",
-                      "port": "YOUR_HELPER_API_PORT",
-                      "name": "YourServerName",
-                      "address": "YourHumanodeAddress (optional, for balance monitoring)",
-                      "status": "active" // Default status
-                  }
-                */
-            };
-            await fs.writeFile(ALLOWLIST_PATH, JSON.stringify(exampleAllowlist, null, 2), 'utf8');
-            await logMessage(`Created empty/example allowlist at ${ALLOWLIST_PATH}. Please configure it.`, 'SYSTEM');
+            if (e.code === 'ENOENT') {
+                const exampleAllowlist = {
+                    "6281234567890": {
+                        "ip": "IP_SERVER_ANDA",
+                        "port": "PORT_API_HELPER_ANDA",
+                        "name": "NamaServerAnda1",
+                        "address": "AlamatHumanodeWalletAnda_Format_SS58",
+                        "status": "active",
+                        "managedAdmin": 0 // Default: tidak dikelola admin
+                    }
+                };
+                await fs.writeFile(ALLOWLIST_PATH, JSON.stringify(exampleAllowlist, null, 2), 'utf8');
+                await logMessage(`Membuat contoh allowlist di ${ALLOWLIST_PATH}. Harap konfigurasikan.`, 'SYSTEM');
+            } else { throw e; }
         }
-
     } catch (error) {
-        console.error(chalk.red(`FATAL: Could not create necessary directories: ${error.message}`));
-        process.exit(1); // Exit if directories can't be created
+        console.error(chalk.red(`FATAL: Tidak dapat membuat direktori/file: ${error.message}`));
+        process.exit(1);
     }
 }
 
-
-// WhatsApp event handlers
-client.on('qr', qr => {
-    qrcode.generate(qr, { small: true });
-    logMessage('QR Code generated. Please scan with WhatsApp', 'WHATSAPP');
-});
+// Event handler WhatsApp
+client.on('qr', qr => { qrcode.generate(qr, { small: true }); logMessage('Kode QR dihasilkan. Pindai dengan WhatsApp.', 'WHATSAPP'); });
 
 client.on('ready', async () => {
-    await logMessage('Client is ready', 'WHATSAPP');
+    await logMessage('Client WhatsApp siap.', 'WHATSAPP');
+    if (BIOAUTH_INTERVAL_ID) { clearInterval(BIOAUTH_INTERVAL_ID); await logMessage('Interval bioauth lama dibersihkan.', 'SYSTEM'); }
+    await balanceMonitor.stopAllMonitoring(); // Hentikan monitor lama jika ada
 
-    // Start bioauth checker with interval
-    startBioauthChecker(); // Initial check
-    setInterval(startBioauthChecker, BIOAUTH_INTERVAL);
+    await startBioauthChecker(); // Pengecekan awal Bioauth
+    BIOAUTH_INTERVAL_ID = setInterval(startBioauthChecker, BIOAUTH_INTERVAL);
+    await logMessage(`Pengecek bioauth dijadwalkan setiap ${BIOAUTH_INTERVAL / 60000} menit.`, 'SYSTEM');
 
-    // Start balance monitoring for each address
     const allowlist = await loadAllowlist();
     if (Object.keys(allowlist).length > 0) {
-        for (const [phone, serverConfig] of Object.entries(allowlist)) {
-            if (serverConfig && serverConfig.address && serverConfig.address !== 'Tidak diset') {
-                balanceMonitor.startMonitoring(phone, serverConfig)
-                    .catch(async (error) => { // Catch errors during individual monitor startup
-                        await logMessage(`Failed to start monitoring for ${serverConfig.name}: ${error.message}`, 'ERROR');
-                    });
+        if (!balanceMonitor.api || !balanceMonitor.api.isConnected) await balanceMonitor.connect();
+
+        if (balanceMonitor.api && balanceMonitor.api.isConnected) {
+            for (const [phone, serverConfig] of Object.entries(allowlist)) {
+                if (serverConfig && serverConfig.address && serverConfig.address !== 'Tidak diset' && serverConfig.address.trim() !== '') {
+                    // Memulai pemantauan saldo. Logika pengiriman notifikasi (ke user atau admin) ada di dalam startMonitoring.
+                    balanceMonitor.startMonitoring(phone, serverConfig).catch(async e => await logMessage(`Gagal memulai monitor saldo ${serverConfig.name}: ${e.message}`, 'ERROR'));
+                } else {
+                    await logMessage(`Alamat wallet tidak valid atau tidak diset untuk ${serverConfig.name} (${phone}). Lewati monitor saldo.`, 'WARN');
+                }
             }
+        } else {
+            await logMessage('Melewati monitor saldo: API Humanode tidak terhubung.', 'WARN');
         }
     } else {
-        await logMessage('No servers in allowlist to monitor balances for.', 'BALANCE');
+        await logMessage('Allowlist kosong. Tidak ada monitor saldo dimulai.', 'INFO');
     }
-    await logMessage('System initialized - All monitors running (if configured)', 'SUCCESS');
+    await logMessage('Sistem diinisialisasi. Monitor berjalan.', 'SUCCESS');
 });
 
-client.on('authenticated', () => {
-    logMessage('Client authenticated', 'WHATSAPP');
+client.on('authenticated', () => logMessage('Client WhatsApp terautentikasi.', 'WHATSAPP'));
+client.on('auth_failure', async msg => await logMessage(`Autentikasi WhatsApp GAGAL: ${msg}. Hapus folder ${AUTH_DIR} & coba lagi.`, 'ERROR'));
+
+client.on('disconnected', async (reason) => {
+    await logMessage(`Client WhatsApp terputus: ${reason}. Mencoba inisialisasi ulang...`, 'WARN');
+    try {
+        if (BIOAUTH_INTERVAL_ID) { clearInterval(BIOAUTH_INTERVAL_ID); BIOAUTH_INTERVAL_ID = null; }
+        await balanceMonitor.disconnect(); // Pastikan monitor saldo juga dihentikan dan koneksi API diputus
+        await client.destroy(); // Hancurkan sesi client lama
+        await logMessage('Client WhatsApp lama dihancurkan. Menginisialisasi ulang...', 'SYSTEM');
+        await client.initialize();
+    } catch (initError) {
+        await logMessage(`Error inisialisasi ulang WhatsApp: ${initError.message}`, 'ERROR');
+        // Pertimbangkan untuk keluar atau mencoba lagi setelah jeda
+    }
 });
 
-client.on('auth_failure', (error) => {
-    logMessage(`Authentication failed: ${error.message}`, 'ERROR');
-    // Consider exiting or attempting re-authentication if this occurs
-});
-
-client.on('disconnected', (reason) => {
-    logMessage(`WhatsApp client disconnected: ${reason}. Attempting to re-initialize...`, 'WARN');
-    client.initialize().catch(async initError => { // Attempt to re-initialize
-        await logMessage(`Re-initialization error after disconnect: ${initError.message}`, 'ERROR');
-        // Consider a more robust reconnection strategy if this fails often
-    });
-});
-
-
-// Main function to start the application
+// Fungsi utama
 async function main() {
-    await ensureDirectories(); // Ensure directories are set up before anything else
-    logMessage('Initializing monitoring system...', 'SYSTEM');
-
+    await ensureDirectories();
+    await logMessage('Menginisialisasi sistem pemantauan...', 'SYSTEM');
     try {
         await client.initialize();
     } catch (error) {
-        await logMessage(`WhatsApp client initialization error: ${error.message}`, 'ERROR');
-        process.exit(1); // Exit if WhatsApp client fails to initialize
+        await logMessage(`Error inisialisasi client WhatsApp: ${error.message}`, 'ERROR');
+        process.exit(1);
     }
 }
 
-// Start the application
-main();
-
-
-// Handle process termination
+// Graceful shutdown
 async function gracefulShutdown(signal) {
-    await logMessage(`Received ${signal}. Shutting down gracefully...`, 'SYSTEM');
-    isBioauthChecking = true; // Prevent new checks from starting during shutdown
-
-    if (balanceMonitor) {
-        try {
-            await balanceMonitor.disconnect();
-            await logMessage('Balance monitor disconnected.', 'SYSTEM');
-        } catch (e) {
-            await logMessage(`Error disconnecting balance monitor: ${e.message}`, 'ERROR');
-        }
-    }
-
-    // Clear the interval for bioauth checker
-    if (typeof BIOAUTH_INTERVAL_ID !== 'undefined') { // Assuming you store interval ID
+    await logMessage(`Menerima ${signal}. Mematikan dengan anggun...`, 'SYSTEM');
+    isBioauthChecking = true; // Hentikan pengecekan baru agar tidak memulai loop baru
+    if (BIOAUTH_INTERVAL_ID) {
         clearInterval(BIOAUTH_INTERVAL_ID);
-        await logMessage('Bioauth checker interval cleared.', 'SYSTEM');
+        await logMessage('Interval bioauth dibersihkan.', 'SYSTEM');
+        BIOAUTH_INTERVAL_ID = null;
     }
-
-
+    if (balanceMonitor) {
+        await balanceMonitor.disconnect();
+    }
     if (client) {
         try {
             await client.destroy();
-            await logMessage('WhatsApp client destroyed.', 'SYSTEM');
-        } catch (e) {
-            await logMessage(`Error destroying WhatsApp client: ${e.message}`, 'ERROR');
+            await logMessage('Client WhatsApp dihancurkan.', 'SYSTEM');
+        }
+        catch (e) {
+            await logMessage(`Error menghancurkan client WhatsApp: ${e.message}`, 'ERROR');
         }
     }
+    await logMessage('Proses mematikan selesai.', 'SYSTEM');
     process.exit(0);
 }
 
-// Store interval ID for graceful shutdown
-let BIOAUTH_INTERVAL_ID;
-
-// Modify client.on('ready') to store interval ID
-client.on('ready', async () => {
-    await logMessage('Client is ready', 'WHATSAPP');
-
-    startBioauthChecker(); // Initial check
-    BIOAUTH_INTERVAL_ID = setInterval(startBioauthChecker, BIOAUTH_INTERVAL); // Store the interval ID
-
-    // ... rest of the ready handler
-    const allowlist = await loadAllowlist();
-    if (Object.keys(allowlist).length > 0) {
-        for (const [phone, serverConfig] of Object.entries(allowlist)) {
-            if (serverConfig && serverConfig.address && serverConfig.address !== 'Tidak diset') {
-                balanceMonitor.startMonitoring(phone, serverConfig)
-                    .catch(async (error) => {
-                        await logMessage(`Failed to start monitoring for ${serverConfig.name}: ${error.message}`, 'ERROR');
-                    });
-            }
-        }
-    } else {
-        await logMessage('No servers in allowlist to monitor balances for.', 'BALANCE');
-    }
-    await logMessage('System initialized - All monitors running (if configured)', 'SUCCESS');
-});
-
-
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+main().catch(async error => {
+    await logMessage(`Error tidak tertangani di main: ${error.message} ${error.stack || ''}`, 'ERROR');
+    // Coba graceful shutdown bahkan pada error fatal, meskipun mungkin tidak semua sumber daya bisa dibersihkan
+    await gracefulShutdown('FATAL_ERROR_MAIN');
+    process.exit(1); // Keluar dengan status error
+});

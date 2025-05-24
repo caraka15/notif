@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status Validator: <%= validatorAddress %>
+    </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            /* Hapus margin default */
+            padding: 10px;
+            /* Tambahkan padding ke body untuk layar kecil */
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 15px;
+            /* Kurangi padding default untuk mobile */
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 900px;
+            margin: 20px auto;
+            /* Margin atas bawah untuk spasi */
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: #2c3e50;
+            margin-top: 0;
+            /* Atur ulang margin heading */
+            margin-bottom: 0.75em;
+        }
+
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            text-align: center;
+            font-size: 1.8em;
+            /* Ukuran font default untuk h1 */
+        }
+
+        h2 {
+            margin-top: 25px;
+            /* Kurangi margin atas untuk h2 */
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            margin-top: 15px;
+            /* Kurangi margin atas untuk h3 */
+            font-size: 1.2em;
+        }
+
+        .info-box,
+        .epoch-progress-box,
+        .phrase-details-box,
+        .epoch-list-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .epoch-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .epoch-item {
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 8px;
+            padding: 10px 15px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            /* Default alignment for larger screens */
+            flex-wrap: wrap;
+            gap: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .epoch-info {
+            flex-grow: 1;
+            min-width: 200px;
+            /* Beri ruang minimum sebelum status wrap di layar besar */
+        }
+
+        .epoch-number {
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .status {
+            padding: 6px 12px;
+            border-radius: 15px;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            font-size: 0.9em;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            flex-shrink: 0;
+        }
+
+        .status-pass {
+            background-color: #28a745;
+        }
+
+        .status-fail {
+            background-color: #dc3545;
+        }
+
+        .status-skip {
+            background-color: #6c757d;
+        }
+
+        .status-berjalan {
+            background-color: #007bff;
+        }
+
+        .status-error {
+            background-color: #ffc107;
+            color: #333;
+        }
+
+        .status-not-ready {
+            background-color: #adb5bd;
+        }
+
+        .error-message {
+            color: #721c24;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .details {
+            font-size: 0.85em;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        .details span {
+            display: block;
+            margin-bottom: 3px;
+        }
+
+        .details strong {
+            color: #333;
+        }
+
+        .running-duration {
+            font-style: italic;
+            color: #007bff;
+            display: block;
+            font-size: 0.8em;
+            margin-top: 3px;
+        }
+
+        .phrase-times span {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.9em;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            margin-top: 8px;
+            height: 22px;
+            overflow: hidden;
+            border: 1px solid #ced4da;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #3498db;
+            border-radius: 3px;
+            text-align: center;
+            line-height: 22px;
+            color: white;
+            font-size: 0.85em;
+            font-weight: bold;
+            transition: width 0.5s ease-in-out;
+        }
+
+        .live-data-section p {
+            margin: 8px 0;
+            font-size: 0.95em;
+        }
+
+        code {
+            word-break: break-all;
+            font-size: 0.9em;
+        }
+
+        /* Media Query untuk layar yang lebih kecil */
+        @media (max-width: 600px) {
+            body {
+                padding: 5px;
+            }
+
+            .container {
+                padding: 10px;
+                margin: 10px auto;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            h2 {
+                font-size: 1.3em;
+                margin-top: 20px;
+            }
+
+            h3 {
+                font-size: 1.1em;
+                margin-top: 10px;
+            }
+
+            .epoch-item {
+                padding: 10px;
+                /* Padding konsisten */
+                flex-direction: column;
+                /* Paksa item bertumpuk secara vertikal */
+                align-items: flex-start;
+                /* Ratakan item ke kiri dalam tumpukan */
+                gap: 8px;
+                /* Jarak antar item yang bertumpuk */
+            }
+
+            .epoch-info {
+                width: 100%;
+                min-width: 0;
+                margin-bottom: 0;
+                /* Tidak perlu margin bawah jika status adalah item flex berikutnya */
+            }
+
+            .status {
+                width: 100%;
+                margin-left: 0;
+                margin-top: 0;
+                box-sizing: border-box;
+                /* Pastikan padding & border termasuk dalam width */
+            }
+
+            .live-data-section p {
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Status Validator</h1>
+        <div class="info-box">
+            <p><strong>Alamat Validator:</strong> <code><%= validatorAddress %></code></p>
+            <% if (errorMessage && (!latestPhraseNumber || latestPhraseNumber < 1) ) { %>
+                <%# Tampilkan error utama jika tidak ada data frasa sama sekali %>
+                    <p class="error-message">
+                        <%= errorMessage %>
+                    </p>
+                    <% } %>
+        </div>
+
+        <%# Bagian untuk menampilkan progress epoch LIVE %>
+            <div class="epoch-progress-box live-data-section">
+                <h3>
+                    Progress Epoch Jaringan Saat Ini
+                    <% if (webServerEpochProgress && webServerEpochProgress.currentEpochSystem !==null && typeof
+                        webServerEpochProgress.currentEpochSystem !=='undefined' ) { %>
+                        (Epoch <%= webServerEpochProgress.currentEpochSystem %>)
+                            <% } %>
+                </h3>
+
+                <% if (webServerEpochProgress && webServerEpochProgress.error && webServerEpochProgress.error !=='N/A'
+                    && webServerEpochProgress.error !==null) { %>
+                    <p class="error-message">
+                        Error data epoch live: <%= webServerEpochProgress.error %>
+                    </p>
+                    <% } %>
+
+                        <% if (webServerEpochProgress && (!webServerEpochProgress.error ||
+                            webServerEpochProgress.error==='N/A' || webServerEpochProgress.error===null)) { %>
+                            <p>
+                                <strong>Blok dalam Epoch:</strong>
+                                <%= typeof webServerEpochProgress.currentBlockInEpoch !=='undefined' ?
+                                    webServerEpochProgress.currentBlockInEpoch.toLocaleString('id-ID') : 'N/A' %> /
+                                    <%= typeof webServerEpochProgress.blocksInEpoch !=='undefined' &&
+                                        webServerEpochProgress.blocksInEpoch> 0 ?
+                                        webServerEpochProgress.blocksInEpoch.toLocaleString('id-ID') : (typeof
+                                        webServerEpochProgress.blocksInEpoch !== 'undefined' ? '0' : 'N/A') %>
+                            </p>
+                            <% if (typeof webServerEpochProgress.blocksInEpoch !=='undefined' &&
+                                webServerEpochProgress.blocksInEpoch> 0 && typeof
+                                webServerEpochProgress.percentageCompleted !== 'undefined') { %>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar"
+                                        style="width: <%= webServerEpochProgress.percentageCompleted.toFixed(2) %>%;">
+                                        <%= webServerEpochProgress.percentageCompleted.toFixed(1) %>%
+                                    </div>
+                                </div>
+                                <% } %>
+                                    <p>
+                                        <strong>Sisa Blok:</strong>
+                                        <%= typeof webServerEpochProgress.remainingBlocksInEpoch !=='undefined' ?
+                                            webServerEpochProgress.remainingBlocksInEpoch.toLocaleString('id-ID')
+                                            : 'N/A' %>
+                                    </p>
+                                    <p>
+                                        <strong>Persentase Selesai:</strong>
+                                        <%= typeof webServerEpochProgress.percentageCompleted !=='undefined' ?
+                                            webServerEpochProgress.percentageCompleted.toFixed(2) : 'N/A' %>%
+                                    </p>
+                                    <p>
+                                        <strong>Perkiraan Epoch Berikutnya dalam:</strong>
+                                        <%= webServerEpochProgress.nextEpochETA || 'N/A' %>
+                                    </p>
+                                    <p>
+                                        <strong>Estimasi Waktu Selesai Epoch Ini:</strong>
+                                        <%= webServerEpochProgress.currentEpochEstimatedCompletion || 'N/A' %>
+                                            <% if (webServerEpochProgress.currentEpochEstimatedCompletion &&
+                                                webServerEpochProgress.currentEpochEstimatedCompletion !=='N/A' ) { %>
+                                                (WIB)<% } %>
+                                    </p>
+                                    <% if (webServerEpochProgress && webServerEpochProgress.currentAbsoluteBlock &&
+                                        webServerEpochProgress.currentAbsoluteBlock> 0) { %>
+                                        <p style="font-size:0.9em; color: #555;">(Blok Jaringan Saat Ini: <%=
+                                                webServerEpochProgress.currentAbsoluteBlock.toLocaleString('id-ID') %>)
+                                        </p>
+                                        <% } %>
+                                            <% } else if (webServerEpochProgress && !webServerEpochProgress.error) { %>
+                                                <p>Memuat data epoch jaringan atau data tidak lengkap...</p>
+                                                <% } else if (!webServerEpochProgress) { %>
+                                                    <p>Data progres epoch tidak dapat dimuat.</p>
+                                                    <% } %>
+            </div>
+
+            <%# Bagian untuk Informasi Frasa dari File Monitor %>
+                <% if (latestPhraseNumber && latestPhraseNumber> 0) { %>
+                    <div class="phrase-details-box">
+                        <h2>Frasa Terbaru yang Dipantau: <%= latestPhraseNumber %> (Epoch <%= latestPhraseStartEpoch %>
+                                    - <%= latestPhraseEndEpoch %>)</h2>
+                        <div class="phrase-times">
+                            <% if (actualPhraseStartTimeForDisplay) { %>
+                                <span><strong>Waktu Mulai Aktual Frasa:</strong>
+                                    <%= new Date(actualPhraseStartTimeForDisplay).toLocaleString('id-ID', {
+                                        dateStyle: 'full' , timeStyle: 'long' , timeZone: 'Asia/Jakarta' }) %>
+                                </span>
+                                <% } else { %>
+                                    <span><strong>Waktu Mulai Aktual Frasa:</strong> Belum tercatat / Gagal
+                                        diambil</span>
+                                    <% } %>
+
+                                        <% if (estimatedPhraseEndTime) { %>
+                                            <span><strong>Estimasi Akhir Frasa:</strong>
+                                                <%= new Date(estimatedPhraseEndTime).toLocaleString('id-ID', {
+                                                    dateStyle: 'full' , timeStyle: 'long' , timeZone: 'Asia/Jakarta' })
+                                                    %>
+                                            </span>
+                                            <% } else if (actualPhraseStartTimeForDisplay) { %>
+                                                <span><strong>Estimasi Akhir Frasa:</strong> Gagal dihitung.</span>
+                                                <% } else { %>
+                                                    <span><strong>Estimasi Akhir Frasa:</strong> Belum dapat
+                                                        dihitung.</span>
+                                                    <% } %>
+                        </div>
+                        <% if (errorMessage && latestPhraseNumber && latestPhraseNumber> 0) { %>
+                            <%# Tampilkan error terkait data frasa jika ada, tapi frasa number diketahui %>
+                                <p class="error-message" style="margin-top: 10px;">
+                                    <%= errorMessage %>
+                                </p>
+                                <% } %>
+                    </div>
+                    <% } else if (!errorMessage) { %>
+                        <%# Jika tidak ada error utama dan tidak ada frasa %>
+                            <div class="phrase-details-box">
+                                <h2>Informasi Frasa</h2>
+                                <p>Tidak dapat menentukan frasa terbaru atau data frasa tidak tersedia.</p>
+                            </div>
+                            <% } %>
+
+
+                                <%# Bagian untuk Detail Epoch per Frasa %>
+                                    <% if (latestPhraseNumber && latestPhraseNumber> 0 && allEpochsInLatestPhrase &&
+                                        allEpochsInLatestPhrase.length > 0 && phraseData && phraseData.epochs) { %>
+                                        <div class="epoch-list-box">
+                                            <h2>Detail Partisipasi Epoch untuk Frasa <%= latestPhraseNumber %>
+                                            </h2>
+                                            <ul class="epoch-list">
+                                                <% const serverRenderTime=Date.now(); const
+                                                    currentLiveEpochForComparison=webServerEpochProgress ?
+                                                    webServerEpochProgress.currentEpochSystem : null; const
+                                                    calculatePhraseNumberOfEpochLocal=(epochNum)=> {
+                                                    if (!epochNum || epochNum < FIRST_EVER_PHRASE_START_EPOCH) return 0;
+                                                        const epochsSinceFirst=epochNum - FIRST_EVER_PHRASE_START_EPOCH;
+                                                        return Math.floor(epochsSinceFirst / PHRASE_DURATION_EPOCHS) +
+                                                        1; }; allEpochsInLatestPhrase.sort((a, b)=> a -
+                                                        b).forEach(epochNum => {
+                                                        const epoch = phraseData.epochs[epochNum.toString()];
+                                                        let statusClass = 'status-not-ready';
+                                                        let statusText = 'BELUM ADA DATA';
+                                                        let inactiveMinutes = 'N/A';
+                                                        let epochStartTimeDisplay = 'N/A';
+                                                        let runningDurationDisplay = '';
+                                                        let rewardsDisplay = '';
+                                                        let reasonDisplay = '';
+
+                                                        if (epoch) {
+                                                        statusText = epoch.status || 'TIDAK DIKETAHUI';
+                                                        switch (statusText.toUpperCase()) {
+                                                        case 'PASS_API_HELPER':
+                                                        case 'PARTICIPATED':
+                                                        case 'PASS':
+                                                        statusClass = 'status-pass'; statusText = 'PASS'; break;
+                                                        case 'FAIL_API_HELPER':
+                                                        case 'MISSED':
+                                                        case 'FAIL':
+                                                        statusClass = 'status-fail'; statusText = 'FAIL'; break;
+                                                        case 'SKIP_HISTORIS':
+                                                        case 'SKIP':
+                                                        statusClass = 'status-skip'; statusText = 'SKIP'; break;
+                                                        case 'BERJALAN':
+                                                        case 'PENDING':
+                                                        case 'RUNNING':
+                                                        statusClass = 'status-berjalan';
+                                                        statusText = 'BERJALAN';
+                                                        if (epoch.epochStartTime) {
+                                                        const startTime = new Date(epoch.epochStartTime).getTime();
+                                                        if (!isNaN(startTime) && startTime < serverRenderTime) { const
+                                                            durationMs=serverRenderTime - startTime; const
+                                                            hours=Math.floor(durationMs / (1000 * 60 * 60)); const
+                                                            minutes=Math.floor((durationMs % (1000 * 60 * 60)) / (1000 *
+                                                            60)); runningDurationDisplay=`(Sudah berjalan: ${hours} jam
+                                                            ${minutes} menit)`; } else if (isNaN(startTime)) {
+                                                            runningDurationDisplay=`(Waktu mulai epoch tidak valid)`; }
+                                                            else { runningDurationDisplay=`(Akan datang/baru mulai)`; }
+                                                            } else if (currentLiveEpochForComparison &&
+                                                            epochNum==currentLiveEpochForComparison) {
+                                                            runningDurationDisplay=`(Waktu mulai epoch belum tercatat di
+                                                            JSON)`; } break; default: statusClass='status-error' ;
+                                                            statusText=epoch.status; } if
+                                                            (epoch.totalApiHelperInactiveSeconds !==undefined) {
+                                                            inactiveMinutes=Math.round(epoch.totalApiHelperInactiveSeconds
+                                                            / 60); } if (epoch.epochStartTime) {
+                                                            epochStartTimeDisplay=new
+                                                            Date(epoch.epochStartTime).toLocaleString('id-ID', {
+                                                            day: '2-digit' , month: 'short' , year: 'numeric' ,
+                                                            hour: '2-digit' , minute: '2-digit' ,
+                                                            timeZone: 'Asia/Jakarta' }); } if (epoch.rewards &&
+                                                            parseFloat(epoch.rewards)> 0) {
+                                                            rewardsDisplay = `Rewards:
+                                                            ${parseFloat(epoch.rewards).toFixed(4)}`;
+                                                            }
+                                                            if (epoch.reason) {
+                                                            reasonDisplay = `Alasan: ${epoch.reason}`;
+                                                            }
+
+                                                            } else if (currentLiveEpochForComparison && epochNum >
+                                                            currentLiveEpochForComparison && latestPhraseNumber ==
+                                                            calculatePhraseNumberOfEpochLocal(currentLiveEpochForComparison))
+                                                            {
+                                                            statusText = 'AKAN DATANG';
+                                                            statusClass = 'status-not-ready';
+                                                            } else if (currentLiveEpochForComparison && epochNum <
+                                                                currentLiveEpochForComparison) {
+                                                                statusText='TIDAK ADA DATA (ASUMSI MISSED)' ;
+                                                                statusClass='status-fail' ; } else if
+                                                                (currentLiveEpochForComparison &&
+                                                                epochNum==currentLiveEpochForComparison) {
+                                                                statusText='SEDANG BERJALAN (CEK LIVE)' ;
+                                                                statusClass='status-berjalan' ; } %>
+                                                                <li class="epoch-item">
+                                                                    <div class="epoch-info">
+                                                                        <span class="epoch-number">Epoch <%= epochNum %>
+                                                                        </span>
+                                                                        <% if (runningDurationDisplay) { %>
+                                                                            <span class="running-duration">
+                                                                                <%= runningDurationDisplay %>
+                                                                            </span>
+                                                                            <% } %>
+                                                                                <div class="details">
+                                                                                    <span><strong>Mulai Epoch
+                                                                                            :</strong>
+                                                                                        <%= epochStartTimeDisplay %>
+                                                                                    </span>
+                                                                                    <span><strong>Total Tidak Aktif
+                                                                                            :</strong>
+                                                                                        <%= inactiveMinutes %> menit
+                                                                                    </span>
+                                                                                    <% if (rewardsDisplay) { %>
+                                                                                        <span><strong>
+                                                                                                <%= rewardsDisplay %>
+                                                                                            </strong></span>
+                                                                                        <% } %>
+                                                                                            <% if (reasonDisplay) { %>
+                                                                                                <span><strong>
+                                                                                                        <%= reasonDisplay
+                                                                                                            %>
+                                                                                                    </strong></span>
+                                                                                                <% } %>
+                                                                                </div>
+                                                                    </div>
+                                                                    <span class="status <%= statusClass %>">
+                                                                        <%= statusText %>
+                                                                    </span>
+                                                                </li>
+                                                                <% }); %>
+                                            </ul>
+                                        </div>
+                                        <% } else if (latestPhraseNumber && latestPhraseNumber> 0 && !errorMessage) { %>
+                                            <div class="epoch-list-box">
+                                                <h2>Detail Partisipasi Epoch untuk Frasa <%= latestPhraseNumber %>
+                                                </h2>
+                                                <p>Tidak ada data detail epoch yang ditemukan untuk validator ini pada
+                                                    frasa terbaru yang dipilih, atau data frasa tidak lengkap.</p>
+                                            </div>
+                                            <% } %>
+    </div>
+</body>
+
+</html>

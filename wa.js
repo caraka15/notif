@@ -79,6 +79,7 @@ const perintah = `*Perintah yang tersedia:*
 #link - Dapatkan link autentikasi
 #web - Tampilkan link dashboard
 #reset - Reset dan dapatkan link baru
+#epoch - Cek link epoch validator Anda
 #register - Daftarkan server baru
 #unregister - Hapus data server
 #bantuan - Tampilkan pesan ini`;
@@ -158,7 +159,9 @@ function getApiEndpoint(number) {
             base: `http://${userConfig.ip}:${userConfig.port}`,
             name: userConfig.name,
             ip: userConfig.ip,
-            port: userConfig.port
+            port: userConfig.port,
+            address: userConfig.address
+
         };
     } catch (error) {
         console.error('Error get API endpoint:', error);
@@ -648,9 +651,8 @@ client.on('message', async msg => {
 
         // Cek allowlist untuk perintah non-registrasi
         const apiEndpoint = getApiEndpoint(sender);
-        if (!apiEndpoint && contentLower !== '#bantuan' && contentLower !== '#register' && !senderIsAdmin) {
-            console.log(`Akses ditolak untuk nomor: ${sender}`);
-            await msg.reply('❌ Maaf, Anda tidak memiliki akses ke layanan ini.\n\nGunakan #register untuk mendaftarkan server Anda atau #bantuan untuk melihat daftar perintah.');
+        if (!apiEndpoint && ['#cek', '#link', '#web', '#epoch', '#reset', '#unregister'].includes(contentLower)) {
+            await msg.reply('❌ Anda harus terdaftar untuk menggunakan perintah ini.\n\nGunakan #register untuk mendaftar.');
             await msg.react('❌');
             return;
         }
@@ -696,6 +698,8 @@ client.on('message', async msg => {
                 }
                 break;
 
+
+
             case '#unregister':
                 try {
                     const apiEndpoint = getApiEndpoint(sender);
@@ -719,6 +723,33 @@ client.on('message', async msg => {
                 } catch (error) {
                     console.error('Error unregister:', error);
                     await msg.reply('❌ Terjadi kesalahan saat menghapus server');
+                    await msg.react('❌');
+                }
+                break;
+
+
+            case '#epoch':
+                try {
+                    // Check if the user has a server registered
+                    if (!apiEndpoint) {
+                        await msg.reply('❌ Anda belum memiliki server terdaftar. Gunakan #register untuk mendaftarkan server terlebih dahulu.');
+                        await msg.react('❌');
+                        break;
+                    }
+
+                    if (!apiEndpoint.address || apiEndpoint.address === 'Tidak diset') {
+                        await msg.reply(`*${apiEndpoint.name}*\n\n❌ Address HMND untuk server Anda tidak disetel. \nAnda dapat mengaturnya dengan melakukan registrasi ulang atau meminta admin untuk memperbarui data.`);
+                        await msg.react('❌');
+                        break;
+                    }
+
+                    const epochUrl = `https://humanode.crxanode.xyz/validator/${apiEndpoint.address}`;
+                    const message = `*${apiEndpoint.name}*\n\n*Link Cek Epoch Validator:*\n\n${epochUrl}`;
+                    await msg.reply(message);
+                    await msg.react('✅');
+                } catch (error) {
+                    console.error('Error #epoch command:', error);
+                    await msg.reply('❌ Terjadi kesalahan saat mengambil link epoch validator');
                     await msg.react('❌');
                 }
                 break;
