@@ -340,116 +340,161 @@ async function handleServerProblem(phone, serverConfig, problemType, details = {
 
 // Fungsi Pengecek Bioauth
 async function checkBioauth(phone, serverConfig) {
+    // initialAllowlistStatus dibaca untuk logika "kembali aktif" dan pembaruan allowlist.json
     const initialAllowlistStatus = serverConfig.status || "active";
     const managementStatus = serverConfig.managedAdmin === 1 ? "Dikelola Admin" : "Dikelola User";
-    await logMessage(`Memeriksa Bioauth untuk ${serverConfig.name} (${serverConfig.ip}). Pengelolaan: ${managementStatus}. Status allowlist saat ini: ${initialAllowlistStatus}`, 'BIOAUTH');
+    // managementInfoText digunakan untuk memperkaya pesan notifikasi
+    const managementInfoText = serverConfig.managedAdmin === 1 ? "\n*(Info: Server ini tercatat dikelola oleh Admin)*" : "";
+
+    await logMessage(`Memeriksa Bioauth untuk ${serverConfig.name} (${serverConfig.ip}). Pengelolaan: ${managementStatus}. Status allowlist awal: ${initialAllowlistStatus}`, 'BIOAUTH');
 
     try {
         const response = await axios.get(`http://${serverConfig.ip}:${serverConfig.port}/cek`, {
-            timeout: 10000 // Timeout 10 detik
+            timeout: 10000 // Timeout 10 detik untuk koneksi ke API helper
         });
         const data = response.data;
 
+        // 1. Validasi struktur dasar respons dari API helper
         if (!data || !data.status || typeof data.status.result === 'undefined') {
-            await logMessage(`Struktur respons API tidak valid dari ${serverConfig.name}. Respons: ${JSON.stringify(data)}`, 'WARN');
-            await handleServerProblem(phone, serverConfig, "InvalidResponse", { responseData: JSON.stringify(data), note: "Struktur API tidak sesuai." });
+            await logMessage(`Struktur respons API helper tidak valid dari ${serverConfig.name}. Respons: ${JSON.stringify(data)}`, 'WARN');
+            // Serahkan ke handleServerProblem untuk notifikasi dan update allowlist
+            await handleServerProblem(phone, serverConfig, "InvalidResponse", {
+                responseData: JSON.stringify(data),
+                note: "Struktur API helper (/cek) tidak sesuai harapan."
+            });
             return;
         }
 
         const apiStatusResult = data.status.result;
 
+        // 2. Tangani status bermasalah yang dilaporkan langsung oleh API helper
         if (apiStatusResult === "Inactive") {
+            await logMessage(`${serverConfig.name} Bioauth TIDAK AKTIF menurut API helper. Memanggil handleServerProblem.`, 'BIOAUTH');
+            // handleServerProblem akan mengirim notifikasi "Bioauth tidak aktif" dan update allowlist
             await handleServerProblem(phone, serverConfig, "BioauthInactive", { authUrl: data.auth?.url });
             return;
         }
 
-        if (apiStatusResult === "ServerDown") {
+        if (apiStatusResult === "ServerDown") { // Jika API helper melaporkan bahwa server Humanode-nya "down"
+            await logMessage(`${serverConfig.name} API Helper melaporkan status ServerDown (server Humanode mungkin mati). Memanggil handleServerProblem.`, 'BIOAUTH');
             await handleServerProblem(phone, serverConfig, "ServerDown");
             return;
         }
 
-        if (apiStatusResult === "InvalidResponse") {
-            await handleServerProblem(phone, serverConfig, "InvalidResponse", { responseData: JSON.stringify(data), note: "API melaporkan InvalidResponse." });
+        if (apiStatusResult === "InvalidResponse") { // Jika API helper sendiri melaporkan bahwa respons dari node Humanode tidak valid
+            await logMessage(`${serverConfig.name} API Helper melaporkan status InvalidResponse (dari node Humanode). Memanggil handleServerProblem.`, 'BIOAUTH');
+            await handleServerProblem(phone, serverConfig, "InvalidResponse", {
+                responseData: JSON.stringify(data),
+                note: "API helper melaporkan InvalidResponse dari node Humanode."
+            });
             return;
         }
 
+        // 3. Tangani status "Aktif" yang dilaporkan oleh API helper
         if (typeof apiStatusResult === 'object' && apiStatusResult.Active) {
-            const isManagedByAdmin = serverConfig.managedAdmin === 1;
-            let managementInfoText = isManagedByAdmin ? "\n*(Info: Server ini tercatat dikelola oleh Admin)*" : "";
+            await logMessage(`${serverConfig.name} Bioauth AKTIF menurut API helper.`, 'BIOAUTH');
 
+            // Jika status di allowlist.json sebelumnya tidak "active", kirim notifikasi "kembali aktif"
+            // dan perbarui status di allowlist.json.
             if (initialAllowlistStatus !== "active") {
-                const message = `✅ *${serverConfig.name}* kembali AKTIF!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
-                await sendWhatsAppMessage(phone, message); // Notifikasi kembali aktif tetap ke user
-                await logMessage(`${serverConfig.name} telah beralih ke AKTIF. Notifikasi terkirim ke ${phone.replace('@c.us', '')}. Memperbarui allowlist.`, 'BIOAUTH');
+                const backToActiveMessage = `✅ *${serverConfig.name}* kembali AKTIF (Bioauth)!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                await sendWhatsAppMessage(phone, backToActiveMessage);
+                await logMessage(`${serverConfig.name} Bioauth telah beralih ke AKTIF. Notifikasi terkirim. Memperbarui allowlist menjadi 'active'.`, 'BIOAUTH');
                 await updateAllowlistStatus(phone, "active");
             } else {
-                await logMessage(`${serverConfig.name} dikonfirmasi AKTIF. Melanjutkan pemeriksaan kedaluwarsa.`, 'BIOAUTH');
+                // Jika sudah aktif di allowlist, cukup log konfirmasi
+                await logMessage(`${serverConfig.name} Bioauth dikonfirmasi AKTIF (status allowlist sudah 'active'). Lanjut cek kedaluwarsa.`, 'BIOAUTH');
             }
 
-            const expiresAt = apiStatusResult.Active.expires_at;
-            // const now = Date.now(); // Tidak digunakan secara langsung, digantikan oleh remaining_time dari API
-            // const remainingMilliseconds = expiresAt - now; // Tidak digunakan secara langsung
+            // Persiapan untuk cek waktu kedaluwarsa
+            let remainingMillisecondsFromAPI = 0;
             let formattedRemainingTime = "N/A";
-            let remainingMillisecondsFromAPI = 0; // Untuk logika peringatan
 
-            if (data.status.remaining_time && typeof data.status.remaining_time.total_milliseconds === 'number') {
-                remainingMillisecondsFromAPI = data.status.remaining_time.total_milliseconds;
-            }
-
-
-            if (data.status.remaining_time && typeof data.status.remaining_time.hours === 'number' && typeof data.status.remaining_time.minutes === 'number') {
-                const totalHours = data.status.remaining_time.hours;
-                const minutes = data.status.remaining_time.minutes;
-                const days = Math.floor(totalHours / 24);
-                const remainingHoursInDay = totalHours % 24;
-                let parts = [];
-                if (days > 0) parts.push(`${days} hari`);
-                if (remainingHoursInDay > 0 || (days === 0 && parts.length === 0 && minutes > 0)) parts.push(`${remainingHoursInDay} jam`); // Tampilkan jam jika ada atau jika hanya menit
-                if (minutes > 0 || (days === 0 && remainingHoursInDay === 0 && parts.length === 0)) parts.push(`${minutes} menit`); // Tampilkan menit jika ada atau jika satu-satunya
-                formattedRemainingTime = parts.length > 0 ? parts.join(' ') : "Kurang dari semenit";
-            }
-
-
-            if (initialAllowlistStatus === "active") { // Hanya kirim peringatan kedaluwarsa jika status saat ini aktif
-                const thirtyMinuteWarningThreshold = 30 * 60 * 1000;
-                const twentyFiveMinuteWarningThreshold = 25 * 60 * 1000;
-                const fiveMinuteWarningThreshold = 5 * 60 * 1000;
-
-                // Kondisi untuk peringatan 25-30 menit
-                if (remainingMillisecondsFromAPI > twentyFiveMinuteWarningThreshold && remainingMillisecondsFromAPI <= thirtyMinuteWarningThreshold) {
-                    const message = `🟡 *${serverConfig.name}* akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}\n`
-                    // + (data.auth && data.auth.url ? `Link Re-autentikasi:\n${data.auth.url}` : 'Link autentikasi tidak tersedia.');
-                    await sendWhatsAppMessage(phone, message); // Notifikasi kedaluwarsa tetap ke user
-                    await logMessage(`${serverConfig.name} kedaluwarsa dalam ~${formattedRemainingTime} (rentang 25-30 menit) - peringatan terkirim ke ${phone.replace('@c.us', '')}`, 'BIOAUTH');
+            if (data.status.remaining_time) {
+                // Prioritaskan total_milliseconds jika valid dan lebih besar dari 0
+                if (typeof data.status.remaining_time.total_milliseconds === 'number' && data.status.remaining_time.total_milliseconds > 0) {
+                    remainingMillisecondsFromAPI = data.status.remaining_time.total_milliseconds;
                 }
-                // Kondisi untuk peringatan di bawah 5 menit
-                else if (remainingMillisecondsFromAPI > 0 && remainingMillisecondsFromAPI <= fiveMinuteWarningThreshold) {
-                    const message = `🔴 *${serverConfig.name}* akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}\n`
-                    // + (data.auth && data.auth.url ? `Link Re-autentikasi:\n${data.auth.url}` : 'Link autentikasi tidak tersedia.');
-                    await sendWhatsAppMessage(phone, message); // Notifikasi kedaluwarsa tetap ke user
-                    await logMessage(`${serverConfig.name} kedaluwarsa dalam ~${formattedRemainingTime} (rentang <5 menit) - peringatan DARURAT terkirim ke ${phone.replace('@c.us', '')}`, 'BIOAUTH');
+                // Jika total_milliseconds tidak valid/nol, coba hitung dari jam dan menit
+                else if (typeof data.status.remaining_time.hours === 'number' && typeof data.status.remaining_time.minutes === 'number') {
+                    // Log sebagai warning jika fallback calculation digunakan
+                    await logMessage(`WARN: ${serverConfig.name}: 'total_milliseconds' dari API helper tidak valid atau nol. Menghitung sisa waktu dari jam/menit. Data remaining_time: ${JSON.stringify(data.status.remaining_time)}`, 'BIOAUTH');
+                    remainingMillisecondsFromAPI =
+                        (data.status.remaining_time.hours * 60 * 60 * 1000) +
+                        (data.status.remaining_time.minutes * 60 * 1000) +
+                        ((data.status.remaining_time.seconds || 0) * 1000); // Tambahkan detik jika ada
+                }
+
+                // Format sisa waktu untuk pesan notifikasi
+                if (typeof data.status.remaining_time.hours === 'number' && typeof data.status.remaining_time.minutes === 'number') {
+                    const totalHours = data.status.remaining_time.hours;
+                    const minutes = data.status.remaining_time.minutes;
+                    const seconds = data.status.remaining_time.seconds || 0;
+                    const days = Math.floor(totalHours / 24);
+                    const remainingHoursInDay = totalHours % 24;
+                    let parts = [];
+
+                    if (days > 0) parts.push(`${days} hari`);
+                    if (remainingHoursInDay > 0) parts.push(`${remainingHoursInDay} jam`);
+                    // Tampilkan menit jika > 0 ATAU jika tidak ada hari/jam tapi menit > 0
+                    if (minutes > 0 || (days === 0 && remainingHoursInDay === 0 && parts.length === 0)) {
+                        parts.push(`${minutes} menit`);
+                    }
+                    // Tampilkan detik jika tidak ada hari/jam/menit tapi detik > 0
+                    if (days === 0 && remainingHoursInDay === 0 && minutes === 0 && seconds > 0 && parts.length === 0) {
+                        parts.push(`${seconds} detik`);
+                    }
+                    // Jika semua 0 tapi ada milidetik positif, sebut "Kurang dari semenit"
+                    formattedRemainingTime = parts.length > 0 ? parts.join(' ') : (remainingMillisecondsFromAPI > 0 ? "Kurang dari semenit" : "N/A");
                 }
             }
-            return;
+
+            // Log sisa waktu aktual dari API (berguna untuk debugging)
+            await logMessage(`${serverConfig.name}: Deteksi sisa waktu Bioauth dari API: ${formattedRemainingTime} (${remainingMillisecondsFromAPI}ms).`, 'BIOAUTH_DEBUG');
+
+            // Kirim notifikasi peringatan kedaluwarsa jika memenuhi kondisi waktu
+            // Pengiriman peringatan ini TIDAK bergantung pada initialAllowlistStatus
+            const thirtyMinuteWarningThreshold = 30 * 60 * 1000; // 30 menit
+            const twentyFiveMinuteWarningThreshold = 25 * 60 * 1000; // 25 menit
+            const fiveMinuteWarningThreshold = 5 * 60 * 1000;    // 5 menit
+
+            if (remainingMillisecondsFromAPI > twentyFiveMinuteWarningThreshold && remainingMillisecondsFromAPI <= thirtyMinuteWarningThreshold) {
+                const warningMessage = `🟡 *${serverConfig.name}* Bioauth akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                await sendWhatsAppMessage(phone, warningMessage);
+                await logMessage(`${serverConfig.name} Bioauth kedaluwarsa dalam ~${formattedRemainingTime} (rentang 25-30 menit). Peringatan terkirim.`, 'BIOAUTH');
+            } else if (remainingMillisecondsFromAPI > 0 && remainingMillisecondsFromAPI <= fiveMinuteWarningThreshold) {
+                const urgentWarningMessage = `🔴 *${serverConfig.name}* Bioauth akan kedaluwarsa SEGERA dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                await sendWhatsAppMessage(phone, urgentWarningMessage);
+                await logMessage(`${serverConfig.name} Bioauth kedaluwarsa SEGERA dalam ~${formattedRemainingTime} (rentang <5 menit). Peringatan darurat terkirim.`, 'BIOAUTH');
+            } else {
+                // Jika aktif dan tidak dalam periode peringatan, cukup log saja
+                await logMessage(`${serverConfig.name} Bioauth aktif, tidak dalam periode peringatan kedaluwarsa.`, 'BIOAUTH');
+            }
+            return; // Selesai memproses status "Active"
         }
 
-        await logMessage(`Status respons API tidak tertangani untuk ${serverConfig.name}: ${JSON.stringify(apiStatusResult)}. Data: ${JSON.stringify(data)}`, 'WARN');
-        await handleServerProblem(phone, serverConfig, "InvalidResponse", { responseData: JSON.stringify(data), note: "Status API tidak dikenal." });
+        // 4. Tangani jika `apiStatusResult` adalah nilai yang tidak dikenal/tidak ditangani
+        await logMessage(`Status API helper Bioauth tidak dikenal atau tidak tertangani untuk ${serverConfig.name}: "${JSON.stringify(apiStatusResult)}". Data Lengkap: ${JSON.stringify(data)}`, 'WARN');
+        await handleServerProblem(phone, serverConfig, "InvalidResponse", {
+            responseData: JSON.stringify(data),
+            note: `Status API Bioauth tidak dikenal dari helper: "${apiStatusResult}"`
+        });
 
     } catch (error) {
-        if (error.isAxiosError && !error.response && error.code) {
-            await logMessage(`Error koneksi ke helper API untuk ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): ${error.code} - ${error.message}.`, 'ERROR');
+        // 5. Tangani error jaringan atau koneksi saat menghubungi API helper
+        if (error.isAxiosError && !error.response && error.code) { // Error jaringan (misal, ENOTFOUND, ECONNREFUSED, ETIMEDOUT)
+            await logMessage(`Error koneksi ke helper API Bioauth untuk ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): ${error.code} - ${error.message}.`, 'ERROR');
             await handleServerProblem(phone, serverConfig, "ConnectionError", { errorCode: error.code, errorMessage: error.message });
-        } else if (error.isAxiosError && error.response) {
-            await logMessage(`Error HTTP dari API helper ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): Status ${error.response.status}. Pesan: ${error.message}. Respons: ${JSON.stringify(error.response.data)}`, 'ERROR');
-            // Tetap panggil handleServerProblem agar status allowlist bisa diupdate jika perlu
-            await handleServerProblem(phone, serverConfig, "ConnectionError", { errorCode: `HTTP ${error.response.status}`, errorMessage: error.message });
-        } else {
+        } else if (error.isAxiosError && error.response) { // Error HTTP dari API helper (misal, 404, 503, 500)
+            await logMessage(`Error HTTP dari API helper Bioauth ${serverConfig.name} (${serverConfig.ip}:${serverConfig.port}): Status ${error.response.status}. Data: ${JSON.stringify(error.response.data)}`, 'ERROR');
+            await handleServerProblem(phone, serverConfig, "ConnectionError", { errorCode: `HTTP ${error.response.status}`, errorMessage: `API helper mengembalikan status error: ${error.response.status}` });
+        } else { // Error tidak terduga lainnya selama proses checkBioauth
             await logMessage(`Error tak terduga di checkBioauth untuk ${serverConfig.name}: ${error.message} (Stack: ${error.stack || 'N/A'})`, 'ERROR');
+            // Untuk keamanan, panggil handleServerProblem agar status allowlist minimal tercatat ada masalah tidak terduga
+            await handleServerProblem(phone, serverConfig, "ConnectionError", { errorCode: 'UNEXPECTED_CHECK_BIOAUTH_ERROR', errorMessage: error.message });
         }
     }
 }
-
 // Fungsi pengiriman pesan WhatsApp
 async function sendWhatsAppMessage(phone, message) {
     try {
