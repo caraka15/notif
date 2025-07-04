@@ -106,11 +106,11 @@ client.on('ready', () => {
 });
 
 // Format pesan status
-async function formatPesanStatus(statusData) {
+async function formatPesanStatus(statusData, serverName) {
     try {
         const status = statusData.status;
         if (status.result === "Inactive") {
-            return `*Status Bioauth:* INACTIVE\n\nSilakan lakukan autentikasi dengan perintah #link`;
+            return `*Status Bioauth:* INACTIVE\n\nSilakan lakukan autentikasi dengan perintah #link \n\nWEB: https://hmnd.crxanode.xyz/${serverName.toLowerCase()}`;
         }
 
         const totalHours = status.remaining_time.hours;
@@ -128,7 +128,7 @@ async function formatPesanStatus(statusData) {
         }
         formattedTime += `${minutes} menit`;
 
-        return `*Status Bioauth:*\nWaktu tersisa: ${formattedTime.trim()}`;
+        return `*Status Bioauth:*\nWaktu tersisa: ${formattedTime.trim()}\n\nWEB: https://hmnd.crxanode.xyz/${serverName.toLowerCase()}`;
     } catch (error) {
         console.error('Error format pesan status:', error);
         return '❌ Format status tidak valid';
@@ -662,7 +662,7 @@ client.on('message', async msg => {
                 try {
                     console.log(`Mengecek status untuk ${sender} ke ${apiEndpoint.base}/cek`);
                     const response = await axios.get(`${apiEndpoint.base}/cek`);
-                    const statusMessage = await formatPesanStatus(response.data);
+                    const statusMessage = await formatPesanStatus(response.data, apiEndpoint.name);
                     await msg.reply(`*${apiEndpoint.name}*\n${statusMessage}`);
                     await msg.react('✅');
                 } catch (error) {
@@ -688,7 +688,7 @@ client.on('message', async msg => {
 
             case '#web':
                 try {
-                    const message = `*${apiEndpoint.name}*\n\n*Link Dashboard:*\n\nhttp://${apiEndpoint.ip}:${apiEndpoint.port}`;
+                    const message = `*${apiEndpoint.name}*\n\n*Link Dashboard:*\n\nhttps://hmnd.crxanode.xyz/${apiEndpoint.name.toLowerCase()}`;
                     await msg.reply(message);
                     await msg.react('✅');
                 } catch (error) {
@@ -743,7 +743,7 @@ client.on('message', async msg => {
                         break;
                     }
 
-                    const epochUrl = `https://humanode.crxanode.xyz/validator/${apiEndpoint.address}`;
+                    const epochUrl = `https://validator.crxanode.xyz/validator/${apiEndpoint.address}`;
                     const message = `*${apiEndpoint.name}*\n\n*Link Cek Epoch Validator:*\n\n${epochUrl}`;
                     await msg.reply(message);
                     await msg.react('✅');

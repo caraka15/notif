@@ -1,0 +1,25 @@
+2025/06/28-12:13:28.709 71fc0 Reusing MANIFEST /root/notif/.wwebjs_auth_monitor_beta/session-monitor-bot/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/06/28-12:13:28.709 71fc0 Recovering log #816
+2025/06/28-12:13:28.752 71fc0 Reusing old log /root/notif/.wwebjs_auth_monitor_beta/session-monitor-bot/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/000816.log 
+2025/06/28-12:13:32.095 71fba Level-0 table #827: started
+2025/06/28-12:13:32.105 71fba Level-0 table #827: 346291 bytes OK
+2025/06/28-12:13:32.107 71fba Delete type=0 #816
+2025/06/28-12:13:32.107 71fba Manual compaction at level-0 from '\x00 \x00\x00\x00' @ 72057594037927935 : 1 .. '\x00!\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/06/28-12:13:35.781 71fc1 Compacting 1@1 + 7@2 files
+2025/06/28-12:13:36.035 71fc1 Generated table #828@1: 86731 keys, 2236574 bytes
+2025/06/28-12:13:36.238 71fc1 Generated table #829@1: 43693 keys, 2214201 bytes
+2025/06/28-12:13:36.357 71fc1 Generated table #830@1: 11375 keys, 2167451 bytes
+2025/06/28-12:13:36.512 71fc1 Generated table #831@1: 20885 keys, 2186347 bytes
+2025/06/28-12:13:36.840 71fc1 Generated table #832@1: 111957 keys, 2261591 bytes
+2025/06/28-12:13:37.235 71fc1 Generated table #833@1: 117316 keys, 2269828 bytes
+2025/06/28-12:13:37.405 71fc1 Generated table #834@1: 54145 keys, 1049022 bytes
+2025/06/28-12:13:37.405 71fc1 Compacted 1@1 + 7@2 files => 14385014 bytes
+2025/06/28-12:13:37.408 71fc1 compacted to: files[ 0 0 7 0 0 0 0 ]
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #822
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #827
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #818
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #821
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #819
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #823
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #820
+2025/06/28-12:13:37.408 71fc1 Delete type=2 #824

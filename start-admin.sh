@@ -50,16 +50,16 @@ start_wa_bot() {
     fi
 }
 
-# Fungsi untuk memulai monitor checker (monitor.js)
+# Fungsi untuk memulai monitor checker (monitor-beta.js)
 start_monitor_js() { # Mengganti nama fungsi agar lebih spesifik
-    log_message "Memulai Monitor Asli (monitor.js)..."
-    nohup node "$SCRIPT_DIR/monitor.js" > "$LOG_DIR/monitor.log" 2>&1 &
+    log_message "Memulai Monitor Asli (monitor-beta.js)..."
+    nohup node "$SCRIPT_DIR/monitor-beta.js" > "$LOG_DIR/monitor-beta.log" 2>&1 &
     sleep 3
     
-    if is_process_running "node $SCRIPT_DIR/monitor.js"; then
-        log_message "Monitor Asli (monitor.js) berhasil dijalankan"
+    if is_process_running "node $SCRIPT_DIR/monitor-beta.js"; then
+        log_message "Monitor Asli (monitor-beta.js) berhasil dijalankan"
     else
-        log_message "GAGAL menjalankan Monitor Asli (monitor.js)"
+        log_message "GAGAL menjalankan Monitor Asli (monitor-beta.js)"
         return 1
     fi
 }
@@ -103,10 +103,10 @@ check_services() {
         echo "WhatsApp Bot (wa.js): Stopped"
     fi
     
-    if is_process_running "node $SCRIPT_DIR/monitor.js"; then
-        echo "Monitor Asli (monitor.js): Running"
+    if is_process_running "node $SCRIPT_DIR/monitor-beta.js"; then
+        echo "Monitor Asli (monitor-beta.js): Running"
     else
-        echo "Monitor Asli (monitor.js): Stopped"
+        echo "Monitor Asli (monitor-beta.js): Stopped"
     fi
 
     if is_process_running "node $SCRIPT_DIR/web_server.js"; then
@@ -126,7 +126,7 @@ check_services() {
 stop_all() {
     log_message "Menghentikan semua layanan..."
     stop_if_running "node $SCRIPT_DIR/wa.js"
-    stop_if_running "node $SCRIPT_DIR/monitor.js"
+    stop_if_running "node $SCRIPT_DIR/monitor-beta.js"
     stop_if_running "node $SCRIPT_DIR/web_server.js"
     stop_if_running "node $SCRIPT_DIR/poch.js"
     log_message "Semua layanan dihentikan"
@@ -154,8 +154,8 @@ case "$1" in
                         stop_if_running "node $SCRIPT_DIR/wa.js"
                         start_wa_bot
                         ;;
-                    monitor) # Ini merujuk ke monitor.js yang lama
-                        stop_if_running "node $SCRIPT_DIR/monitor.js"
+                    monitor) # Ini merujuk ke monitor-beta.js yang lama
+                        stop_if_running "node $SCRIPT_DIR/monitor-beta.js"
                         start_monitor_js 
                         ;;
                     web)
@@ -191,7 +191,7 @@ case "$1" in
                         stop_if_running "node $SCRIPT_DIR/wa.js"
                         ;;
                     monitor)
-                        stop_if_running "node $SCRIPT_DIR/monitor.js"
+                        stop_if_running "node $SCRIPT_DIR/monitor-beta.js"
                         ;;
                     web)
                         stop_if_running "node $SCRIPT_DIR/web_server.js"

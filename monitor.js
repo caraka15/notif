@@ -276,10 +276,12 @@ async function handleServerProblem(phone, serverConfig, problemType, details = {
         managementInfoText = `\n*(Info: Server ini tercatat dikelola oleh Admin)*`;
     }
 
+    const serverWebUrl = `https://hmnd.crxanode.xyz/${serverConfig.name.toLowerCase()}`;
+
     switch (problemType) {
         case "BioauthInactive":
             message = `⛔ *${serverConfig.name}* tidak aktif (Bioauth)!\n\n` +
-                `IP: ${serverConfig.ip}\n` +
+                `WEB: ${serverWebUrl}\n` +
                 `Status: Tidak Aktif (Bioauth)${managementInfoText}\n\n` +
                 (details.authUrl ? `Link Re-autentikasi:\n${details.authUrl}` : 'Link autentikasi tidak tersedia.');
             logDetail = `${serverConfig.name} TIDAK AKTIF (Bioauth)`;
@@ -288,6 +290,7 @@ async function handleServerProblem(phone, serverConfig, problemType, details = {
             message = `🔴 *${serverConfig.name}* tidak merespons (API Helper melaporkan ServerDown)!\n\n` +
                 `IP: ${serverConfig.ip}\n` +
                 `Status: Server Down (pada API Helper ${serverConfig.port})${managementInfoText}\n\n` +
+                `WEB: ${serverWebUrl}\n` +
                 `Layanan helper API untuk Bioauth mungkin mati. Mohon cek server atau restart layanan helper.`;
             logDetail = `${serverConfig.name} TIDAK DAPAT DIVERIFIKASI (API Helper ServerDown)`;
             break;
@@ -295,6 +298,7 @@ async function handleServerProblem(phone, serverConfig, problemType, details = {
             message = `⚠️ *${serverConfig.name}* mengembalikan respons tidak valid dari API Helper!\n\n` +
                 `IP: ${serverConfig.ip}\n` +
                 `Status: Respons Tidak Valid (dari API Helper ${serverConfig.port})${managementInfoText}\n` +
+                `WEB: ${serverWebUrl}\n` +
                 (details.note ? `Catatan: ${details.note}\n` : '') +
                 `Mohon cek server atau lakukan reset pada layanan helper API.`;
             logDetail = `${serverConfig.name} TIDAK DAPAT DIVERIFIKASI (API Helper InvalidResponse ${details.note || ''})`;
@@ -345,6 +349,9 @@ async function checkBioauth(phone, serverConfig) {
     const managementStatus = serverConfig.managedAdmin === 1 ? "Dikelola Admin" : "Dikelola User";
     // managementInfoText digunakan untuk memperkaya pesan notifikasi
     const managementInfoText = serverConfig.managedAdmin === 1 ? "\n*(Info: Server ini tercatat dikelola oleh Admin)*" : "";
+
+    // Memastikan serverWebUrl didefinisikan di sini
+    const serverWebUrl = `https://hmnd.crxanode.xyz/${serverConfig.name.toLowerCase()}`;
 
     await logMessage(`Memeriksa Bioauth untuk ${serverConfig.name} (${serverConfig.ip}). Pengelolaan: ${managementStatus}. Status allowlist awal: ${initialAllowlistStatus}`, 'BIOAUTH');
 
@@ -397,9 +404,9 @@ async function checkBioauth(phone, serverConfig) {
             // Jika status di allowlist.json sebelumnya tidak "active", kirim notifikasi "kembali aktif"
             // dan perbarui status di allowlist.json.
             if (initialAllowlistStatus !== "active") {
-                const backToActiveMessage = `✅ *${serverConfig.name}* kembali AKTIF (Bioauth)!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                const backToActiveMessage = `✅ *${serverConfig.name}* kembali AKTIF (Bioauth)!${managementInfoText}\n\nWEB: ${serverWebUrl}`;
                 await sendWhatsAppMessage(phone, backToActiveMessage);
-                await logMessage(`${serverConfig.name} Bioauth telah beralih ke AKTIF. Notifikasi terkirim. Memperbarui allowlist menjadi 'active'.`, 'BIOAUTH');
+                await logMessage(`${serverConfig.name} Bioauth telah beralih ke AKTIF. Notifikasi terkirim. Memperbarui allowlist menjadi: active.`, 'BIOAUTH');
                 await updateAllowlistStatus(phone, "active");
             } else {
                 // Jika sudah aktif di allowlist, cukup log konfirmasi
@@ -459,11 +466,11 @@ async function checkBioauth(phone, serverConfig) {
             const fiveMinuteWarningThreshold = 5 * 60 * 1000;    // 5 menit
 
             if (remainingMillisecondsFromAPI > twentyFiveMinuteWarningThreshold && remainingMillisecondsFromAPI <= thirtyMinuteWarningThreshold) {
-                const warningMessage = `🟡 *${serverConfig.name}* Bioauth akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                const warningMessage = `🟡 *${serverConfig.name}* Bioauth akan kedaluwarsa dalam ~${formattedRemainingTime}!${managementInfoText}\n\nWEB: ${serverWebUrl}\n`;
                 await sendWhatsAppMessage(phone, warningMessage);
                 await logMessage(`${serverConfig.name} Bioauth kedaluwarsa dalam ~${formattedRemainingTime} (rentang 25-30 menit). Peringatan terkirim.`, 'BIOAUTH');
             } else if (remainingMillisecondsFromAPI > 0 && remainingMillisecondsFromAPI <= fiveMinuteWarningThreshold) {
-                const urgentWarningMessage = `🔴 *${serverConfig.name}* Bioauth akan kedaluwarsa SEGERA dalam ~${formattedRemainingTime}!${managementInfoText}\n\nIP: ${serverConfig.ip}`;
+                const urgentWarningMessage = `🔴 *${serverConfig.name}* Bioauth akan kedaluwarsa SEGERA dalam ~${formattedRemainingTime}!${managementInfoText}\n\nWEB: ${serverWebUrl}`;
                 await sendWhatsAppMessage(phone, urgentWarningMessage);
                 await logMessage(`${serverConfig.name} Bioauth kedaluwarsa SEGERA dalam ~${formattedRemainingTime} (rentang <5 menit). Peringatan darurat terkirim.`, 'BIOAUTH');
             } else {
