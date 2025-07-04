@@ -16,3 +16,4 @@ api_helper_phrase_data/
 .wwebjs_auth/
 .wwebjs_auth_monitor/
 .wwebjs_cache/
+.wwebjs_auth_monitor_beta/
